@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "problem_id": "{problem_id}",
+  "title": "{problem_title}",
+  "status": "{problem_status}",
+  "dependencies": [],
+  "evaluation_design": null,
+  "contract": {
+    "public_brief": ".DiscoveryConsole/pub/README.md",
+    "candidate": null,
+    "evaluation": ".DiscoveryConsole/pub/evaluation/contract.json",
+    "baseline_frontier": null
+  }
+}

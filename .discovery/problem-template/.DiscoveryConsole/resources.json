@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "free_run": {
+    "default": {
+      "cpus": 2,
+      "memory_gb": 4,
+      "gpus": []
+    },
+    "agents": {}
+  },
+  "queue": {
+    "capacity": {
+      "cpus": 4,
+      "memory_gb": 8,
+      "gpus": []
+    }
+  },
+  "evaluation": {
+    "resources": {
+      "cpus": 4,
+      "memory_gb": 8,
+      "gpus": []
+    },
+    "timeout_seconds": null
+  },
+  "scheduler": {
+    "memory_reserve_gb": 2,
+    "respect_system_load": true,
+    "respect_external_gpu_processes": true,
+    "attached_wait_timeout_seconds": 1500
+  }
+}

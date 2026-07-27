@@ -1,0 +1,42 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+approval_policy = "never"
+default_permissions = "discovery_route"
+allow_login_shell = false
+web_search = "live"
+# Milliseconds.  This exceeds the default 25-minute attached Job wait window
+# so one empty background-terminal wait can receive its final response.
+background_terminal_max_timeout = 1800000
+
+[permissions.discovery_route]
+description = "Discovery Route: writable research workspace, read-only control plane and Problem pub."
+
+[permissions.discovery_route.filesystem]
+":minimal" = "read"
+"{python_prefix}" = "read"
+"{codex_install_root}" = "read"
+"{problem_root}/problem.json" = "read"
+"{problem_root}/.DiscoveryConsole/pub" = "read"
+"{problem_root}/.DiscoveryConsole/private" = "deny"
+"{broker_socket}" = "read"
+
+[permissions.discovery_route.filesystem.":workspace_roots"]
+"." = "write"
+".codex" = "read"
+".agents" = "read"
+".discovery" = "read"
+".git" = "read"
+"AGENTS.md" = "read"
+"goals" = "read"
+"headless_goals" = "read"
+"explore" = "read"
+
+[permissions.discovery_route.network]
+enabled = true
+allow_local_binding = false
+
+[permissions.discovery_route.network.domains]
+"*" = "allow"
+
+[permissions.discovery_route.network.unix_sockets]
+"{broker_socket}" = "allow"

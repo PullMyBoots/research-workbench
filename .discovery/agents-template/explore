@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""Thin Route-only client for the Discovery authenticated Broker."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import socket
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+
+PROTOCOL = 8
+AGENT_NAME_RE = re.compile(r"agent[A-Za-z0-9_-]*\Z")
+MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+WAIT_RESPONSE_TIMEOUT_SECONDS = 1805
+TERMINAL_JOB_STATUSES = {"done", "failed", "cancelled", "stale"}
+JOB_HEARTBEAT_SECONDS = 5.0
+PROGRESS_EMIT_SECONDS = 2.0
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(prog="explore", description="Discovery Route exploration client.")
+    sub = result.add_subparsers(dest="cmd", required=True, metavar="{context,knowledge,run,eval,reflect}")
+
+    context = sub.add_parser("context", help="show this Route's public working context")
+    context.add_argument("--job", default="", help="include one job owned by this Route")
+    context.add_argument("--limit", type=int, default=10)
+
+    knowledge = sub.add_parser("knowledge", help="browse this Problem's public knowledge")
+    knowledge_sub = knowledge.add_subparsers(dest="knowledge_action", required=True)
+    browse = knowledge_sub.add_parser("browse", help="return compact read-only knowledge cards")
+    browse.add_argument("--view", choices=("external", "practice"), required=True)
+    browse.add_argument("--query", default="")
+    browse.add_argument("--metric", default="")
+    browse.add_argument("--sort", default="")
+    browse.add_argument("--route", default="")
+    browse.add_argument("--limit", type=int, default=20)
+    show = knowledge_sub.add_parser("show", help="show one local knowledge reference")
+    show.add_argument("ref")
+
+    run = sub.add_parser("run", help="run or queue a public development command")
+    run.add_argument("--queued", action="store_true", help="queue the command for a Worker")
+    run.add_argument("--completion", choices=("wait", "detach"), default=None, help="wait for this Job or return its persistent locator")
+    run.add_argument("--resources", default="", help="optional resource request JSON")
+    run.add_argument("command", nargs=argparse.REMAINDER)
+
+    evaluate = sub.add_parser("eval", help="submit one Candidate to the registered evaluator")
+    evaluate.add_argument("-m", "--message", required=True)
+    evaluate.add_argument("--candidate", required=True)
+
+    reflect = sub.add_parser("reflect", help="record reflection for one evaluated Version")
+    reflect.add_argument("--version", required=True)
+    reflect.add_argument("--summary-file", required=True)
+    reflect.add_argument("--note", "--note-file", dest="note_file", required=True)
+    reflect.add_argument("--next-brief", "--next-plan-file", dest="next_plan_file", required=True)
+    return result
+
+
+def route_identity() -> tuple[Path, Path, str]:
+    route = Path(__file__).resolve().parent
+    problem = route.parent
+    if not AGENT_NAME_RE.fullmatch(route.name) or not (problem / ".DiscoveryConsole" / "pub").is_dir():
+        raise SystemExit("`./explore` is valid only inside a Discovery Route workspace")
+    try:
+        Path.cwd().resolve().relative_to(route)
+    except ValueError:
+        raise SystemExit("`./explore` must be run from its Route workspace, not a Main/Problem control directory") from None
+    return route, problem, route.name
+
+
+def broker_unavailable(problem_id: str) -> SystemExit:
+    return SystemExit(
+        f"Explore broker is unavailable; ask Human/Main to run `./discovery start --problem {problem_id}` from the Topic root"
+    )
+
+
+def request(route: Path, problem: Path, route_id: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    endpoint_path = problem / ".DiscoveryConsole" / "pub" / "log" / "route_broker.json"
+    token_path = route / ".discovery" / "broker_token"
+    try:
+        endpoint = json.loads(endpoint_path.read_text(encoding="utf-8"))
+        socket_path = Path(str(endpoint.get("socket") or ""))
+        token = token_path.read_text(encoding="utf-8").strip()
+    except (OSError, json.JSONDecodeError):
+        raise broker_unavailable(problem.name) from None
+    if not socket_path.is_absolute() or len(token) < 32:
+        raise broker_unavailable(problem.name)
+    body = json.dumps(
+        {
+            **payload,
+            "problem": problem.name,
+            "route": route_id,
+            "action": action,
+            "token": token,
+            "headless_run_id": os.environ.get("DISCOVERY_HEADLESS_RUN_ID", ""),
+            "campaign_id": os.environ.get("DISCOVERY_HEADLESS_CAMPAIGN_ID", ""),
+        },
+        ensure_ascii=False,
+    ).encode("utf-8") + b"\n"
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            # A wait request is intentionally one long blocking Tool call. It
+            # needs a margin beyond the Runtime's configured wait window to
+            # receive a terminal or handoff response.
+            client.settimeout(WAIT_RESPONSE_TIMEOUT_SECONDS if payload.get("completion") == "wait" else 300)
+            client.connect(str(socket_path))
+            client.sendall(body)
+            client.shutdown(socket.SHUT_WR)
+            chunks: list[bytes] = []
+            size = 0
+            while True:
+                chunk = client.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+                if size > MAX_RESPONSE_BYTES:
+                    raise ValueError("broker response exceeded 4 MiB")
+        result = json.loads(b"".join(chunks).decode("utf-8"))
+    except TimeoutError:
+        if action in {"run.local", "run.queued"}:
+            raise SystemExit(
+                "Route Job wait disconnected after submission. The Job remains tracked; inspect it with "
+                "`./explore context --job <job-id>` and record a Continuation Checkpoint instead of resubmitting."
+            ) from None
+        raise broker_unavailable(problem.name) from None
+    except (OSError, ValueError, json.JSONDecodeError):
+        raise broker_unavailable(problem.name) from None
+    if not isinstance(result, dict) or result.get("ok") is False:
+        raise SystemExit(str(result.get("error") if isinstance(result, dict) else "invalid Broker response"))
+    return result
+
+
+def emit(payload: Any) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def latest_job(problem: Path, job_id: str) -> dict[str, Any] | None:
+    path = problem / ".DiscoveryConsole" / "pub" / "log" / "jobs.jsonl"
+    try:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, json.JSONDecodeError):
+        return None
+    return next((row for row in rows if isinstance(row, dict) and row.get("id") == job_id), None)
+
+
+def job_runtime(problem: Path, job_id: str) -> dict[str, Any]:
+    path = problem / ".DiscoveryConsole" / "pub" / "log" / "dashboard_worker.json"
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    runtimes = state.get("job_runtime", {}) if isinstance(state, dict) else {}
+    value = runtimes.get(job_id, {}) if isinstance(runtimes, dict) else {}
+    return value if isinstance(value, dict) else {}
+
+
+def _latest_overwrite_text(value: str) -> str:
+    parts = [part for part in value.split("\r") if part]
+    return parts[-1] if parts else ""
+
+
+def stream_new_log(path: Path, offset: int, state: dict[str, Any], *, force: bool = False) -> int:
+    try:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            data = handle.read()
+    except OSError:
+        data = b""
+    if data:
+        combined = str(state.get("pending") or "") + data.decode("utf-8", errors="replace")
+        lines = combined.split("\n")
+        state["pending"] = lines.pop()
+        for raw_line in lines:
+            line = _latest_overwrite_text(raw_line) if "\r" in raw_line else raw_line
+            if line:
+                print(line, flush=True)
+                # A newline commits the terminal's current row; no older
+                # overwrite frame should be emitted later at Job completion.
+                state["latest_progress"] = ""
+                state["last_progress_emitted"] = line
+        pending = str(state.get("pending") or "")
+        if "\r" in pending:
+            latest = _latest_overwrite_text(pending)
+            if latest:
+                state["latest_progress"] = latest
+            # A trailing carriage return completed one overwrite update; do
+            # not retain every superseded frame in model-visible memory.
+            state["pending"] = "" if pending.endswith("\r") else pending.rsplit("\r", 1)[-1]
+    current = time.monotonic()
+    latest_progress = str(state.get("latest_progress") or "")
+    due = current >= float(state.get("next_progress_emit") or 0)
+    if latest_progress and (force or due):
+        if latest_progress != str(state.get("last_progress_emitted") or ""):
+            print(f"[progress] {latest_progress}", file=sys.stderr, flush=True)
+            state["last_progress_emitted"] = latest_progress
+        state["next_progress_emit"] = current + PROGRESS_EMIT_SECONDS
+    if force:
+        pending = str(state.get("pending") or "")
+        if pending:
+            print(pending, flush=True)
+            state["pending"] = ""
+    return offset + len(data)
+
+
+def heartbeat_line(job: dict[str, Any], runtime: dict[str, Any], elapsed: float) -> str:
+    status = str(job.get("status") or "unknown")
+    activity = str(runtime.get("activity") or ("waiting_for_resources" if status == "queued" else "starting"))
+    cpu = runtime.get("cpu_percent")
+    memory = runtime.get("memory_current_gb")
+    quiet = runtime.get("output_quiet_seconds")
+    facts = [f"status={status}", f"activity={activity}", f"elapsed={int(elapsed)}s"]
+    if isinstance(cpu, (int, float)):
+        facts.append(f"cpu={cpu:.1f}%/{float(cpu) / 100:.2f} cores")
+    if isinstance(memory, (int, float)):
+        facts.append(f"memory={memory:.3f} GiB")
+    if isinstance(quiet, (int, float)):
+        facts.append(f"stdout_quiet={int(quiet)}s")
+    if runtime.get("process_alive") is not None:
+        facts.append(f"process_alive={str(bool(runtime.get('process_alive'))).lower()}")
+    if runtime.get("supervisor_alive") is not None:
+        facts.append(f"supervisor_alive={str(bool(runtime.get('supervisor_alive'))).lower()}")
+    return "[discovery] " + " · ".join(facts)
+
+
+def wait_for_job(problem: Path, initial: dict[str, Any]) -> dict[str, Any]:
+    job_id = str(initial.get("job") or "")
+    if not job_id:
+        return initial
+    raw_log = str(initial.get("log") or "")
+    log_path = problem / raw_log
+    public_log = (problem / ".DiscoveryConsole" / "pub" / "log").resolve()
+    try:
+        log_path = log_path.resolve()
+        log_path.relative_to(public_log)
+    except (OSError, ValueError):
+        raise SystemExit("Broker returned an invalid public Job log locator") from None
+    timeout_seconds = float(initial.get("wait_timeout_seconds") or 1500)
+    started = time.monotonic()
+    deadline = started + timeout_seconds
+    next_heartbeat = started
+    offset = 0
+    output_state: dict[str, Any] = {"next_progress_emit": started}
+    while True:
+        offset = stream_new_log(log_path, offset, output_state)
+        job = latest_job(problem, job_id)
+        current = time.monotonic()
+        if job is not None and str(job.get("status") or "") in TERMINAL_JOB_STATUSES:
+            offset = stream_new_log(log_path, offset, output_state, force=True)
+            terminal_runtime = job_runtime(problem, job_id)
+            terminal_runtime.update(
+                {
+                    "activity": str(job.get("status") or "unknown"),
+                    "process_alive": False,
+                    "supervisor_alive": False,
+                }
+            )
+            return {
+                "job": job_id,
+                "status": job.get("status"),
+                "job_status": job.get("status"),
+                "reason": job.get("reason"),
+                "returncode": job.get("returncode"),
+                "resources": job.get("resources"),
+                "log": raw_log,
+                "completion_mode": "wait",
+                "wait_deadline": job.get("wait_deadline"),
+                "handoff_required": False,
+                "next_action": "continue_current_role",
+                "runtime": terminal_runtime,
+            }
+        if job is not None and current >= next_heartbeat:
+            print(heartbeat_line(job, job_runtime(problem, job_id), current - started), file=sys.stderr, flush=True)
+            next_heartbeat = current + JOB_HEARTBEAT_SECONDS
+        if current >= deadline:
+            offset = stream_new_log(log_path, offset, output_state, force=True)
+            return {
+                **initial,
+                "status": "still_running",
+                "job_status": job.get("status") if job else initial.get("job_status"),
+                "completion_mode": "wait",
+                "handoff_required": True,
+                "next_action": "checkpoint_and_end_turn",
+                "runtime": job_runtime(problem, job_id),
+            }
+        time.sleep(0.5)
+
+
+def main() -> None:
+    args = parser().parse_args()
+    route, problem, route_id = route_identity()
+    if args.cmd == "context":
+        emit(request(route, problem, route_id, "context", {"job": args.job, "limit": args.limit}).get("result"))
+        return
+    if args.cmd == "knowledge":
+        if args.knowledge_action == "show":
+            emit(request(route, problem, route_id, "knowledge.show", {"ref": args.ref}).get("result"))
+            return
+        emit(request(route, problem, route_id, "knowledge.browse", {"view": args.view, "query": args.query, "metric": args.metric, "sort": args.sort, "route_filter": args.route, "limit": args.limit}).get("result"))
+        return
+    if args.cmd == "run":
+        command = args.command[1:] if args.command and args.command[0] == "--" else args.command
+        if not command:
+            raise SystemExit("missing command")
+        if args.queued and not str(args.resources).strip():
+            raise SystemExit("queued Route run requires --resources <request.json>")
+        action = "run.queued" if args.queued else "run.local"
+        completion = args.completion or ("detach" if args.queued else "wait")
+        result = request(route, problem, route_id, action, {"resources": args.resources, "command": command, "completion": completion}).get("result", {})
+        if completion == "wait" and isinstance(result, dict):
+            result = wait_for_job(problem, result)
+        elif isinstance(result, dict) and result.get("output"):
+            sys.stdout.write(str(result["output"]))
+            if not str(result["output"]).endswith("\n"):
+                sys.stdout.write("\n")
+        emit({key: value for key, value in result.items() if key != "output"} if isinstance(result, dict) else result)
+        if isinstance(result, dict) and isinstance(result.get("returncode"), int) and result["returncode"]:
+            raise SystemExit(result["returncode"] if 0 < result["returncode"] < 256 else 1)
+        return
+    if args.cmd == "eval":
+        emit(request(route, problem, route_id, "eval", {"message": args.message, "candidate": args.candidate}).get("result"))
+        return
+    emit(request(route, problem, route_id, "reflect", {"version": args.version, "summary_file": args.summary_file, "note_file": args.note_file, "next_plan_file": args.next_plan_file}).get("result"))
+
+
+if __name__ == "__main__":
+    main()

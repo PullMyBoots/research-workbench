@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "problem_id": "{problem_id}",
+  "configured": false,
+  "evidence_level": null,
+  "candidate": {
+    "kind": "file_or_directory",
+    "max_files": 10000,
+    "max_bytes": 1073741824,
+    "reject_symlinks": true
+  },
+  "check": {
+    "command": [
+      "python3",
+      ".DiscoveryConsole/pub/evaluation/check_candidate.py",
+      "--candidate",
+      "{candidate}"
+    ],
+    "cwd": "."
+  },
+  "metrics": {},
+  "feedback": {
+    "search_space": null,
+    "information_budget": "Human/Main Agent must define before activation"
+  }
+}

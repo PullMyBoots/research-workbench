@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Exploration Team"
+  short_description: "Build and verify an optional Team search space"
+  default_prompt: "Use $create-exploration-problem to build and verify the already-agreed exploration Team search space, then hand its readiness evidence back to Main."

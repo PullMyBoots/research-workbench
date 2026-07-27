@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Small, submission-local Reviewer CLI; it deliberately has no scheduler."""
+from __future__ import annotations
+import argparse, json, sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+CONTEXT = json.loads((ROOT / "context.json").read_text(encoding="utf-8"))
+
+def read_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+def knowledge(ref: str):
+    if not ref.startswith(("@item:", "@topic:")) or "/" in ref:
+        raise SystemExit("Reviewer knowledge permits only local @item:<id> or @topic:<id>")
+    kind, ident = ref[1:].split(":", 1)
+    root = Path(CONTEXT["knowledge_root"])
+    index = read_json(root / ("items.json" if kind == "item" else "topics.json"))
+    node = index.get(ident) if isinstance(index, dict) else None
+    if not isinstance(node, dict): raise SystemExit("knowledge reference not found")
+    print(json.dumps(node, ensure_ascii=False, sort_keys=True))
+
+def main():
+    parser = argparse.ArgumentParser(prog="review")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("context")
+    k = sub.add_parser("knowledge"); ks = k.add_subparsers(dest="action", required=True)
+    kb = ks.add_parser("browse"); kb.add_argument("--query", default="")
+    kshow = ks.add_parser("show"); kshow.add_argument("ref")
+    submit = sub.add_parser("submit"); submit.add_argument("--file", required=True)
+    args = parser.parse_args()
+    if args.command == "context":
+        print(json.dumps({k: CONTEXT[k] for k in ("candidate", "submission", "problem_readme", "candidate_api", "contract", "prompt", "dimensions", "evidence_space", "objective_evidence", "baseline_root")}, ensure_ascii=False, sort_keys=True)); return
+    if args.command == "knowledge":
+        if args.action == "show": knowledge(args.ref); return
+        needle = args.query.casefold(); root = Path(CONTEXT["knowledge_root"]); rows=[]
+        for name, kind in (("items.json", "item"), ("topics.json", "topic")):
+            data = read_json(root / name)
+            if isinstance(data, dict):
+                rows += [{"ref": f"@{kind}:{ident}", "summary": node.get("summary", "")} for ident, node in data.items() if isinstance(node, dict) and (not needle or needle in json.dumps(node, ensure_ascii=False).casefold())]
+        print(json.dumps(rows, ensure_ascii=False, sort_keys=True)); return
+    source = Path(args.file).resolve()
+    if not source.is_file(): raise SystemExit("result file not found")
+    result = read_json(source)
+    expected = set(CONTEXT["dimensions"])
+    dims = result.get("dimensions") if isinstance(result, dict) else None
+    if set(result) != {"schema_version", "dimensions"} or result.get("schema_version") != 1 or not isinstance(dims, dict) or set(dims) != expected:
+        raise SystemExit("result does not match the declared reviewer schema")
+    for ident, value in dims.items():
+        if not isinstance(value, dict) or set(value) != {"score", "rationale"} or not isinstance(value.get("score"), int) or isinstance(value["score"], bool) or not 1 <= value["score"] <= 10 or not isinstance(value.get("rationale"), str) or not value["rationale"].strip():
+            raise SystemExit(f"invalid reviewer result dimension: {ident}")
+    destination = Path(CONTEXT["result"])
+    destination.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    destination.chmod(0o600)
+
+if __name__ == "__main__": main()

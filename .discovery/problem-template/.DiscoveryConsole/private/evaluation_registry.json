@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "problem_id": "{problem_id}",
+  "configured": false,
+  "public_contract_digest": "",
+  "evaluators": {}
+}

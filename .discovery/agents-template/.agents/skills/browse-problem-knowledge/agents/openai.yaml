@@ -1,0 +1,4 @@
+interface:
+  display_name: "Browse Problem Knowledge"
+  short_description: "Browse this Problem knowledge safely"
+  default_prompt: "Use $browse-problem-knowledge to inspect this Problem knowledge."

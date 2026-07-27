@@ -1,0 +1,4 @@
+interface:
+  display_name: "Browse Discovery Knowledge"
+  short_description: "Browse scoped knowledge, Baselines, and Versions"
+  default_prompt: "Use $browse-discovery-knowledge to browse one Discovery knowledge scope."

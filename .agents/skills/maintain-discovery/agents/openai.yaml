@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Discovery"
+  short_description: "Maintain Main-owned knowledge and notices safely"
+  default_prompt: "Use $maintain-discovery to add one external Item, Topic Memory Log, or Problem Notice."

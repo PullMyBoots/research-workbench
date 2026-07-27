@@ -1,0 +1,10 @@
+pub
+__pycache__/
+.pytest_cache/
+results/*
+!results/.gitkeep
+inspect/*
+!inspect/.gitkeep
+*.pyc
+.codex/*
+!.codex/config.toml

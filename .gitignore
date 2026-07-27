@@ -1,0 +1,23 @@
+# Python and generated code
+__pycache__/
+*.py[cod]
+*.so
+
+# Local agent and browser state
+/.codex/
+.playwright-cli/
+output/
+
+# Route credentials and mutable runtime state
+**/.discovery/broker_token
+**/.DiscoveryConsole/pub/log/resource.lock
+**/.DiscoveryConsole/pub/log/resource_state.json
+**/.DiscoveryConsole/pub/log/jobs.jsonl
+**/.DiscoveryConsole/pub/log/worker_state.json
+**/.DiscoveryConsole/private/eval_submissions/*
+!**/.DiscoveryConsole/private/eval_submissions/.gitkeep
+
+# Local environment files
+.env
+.venv/
+venv/

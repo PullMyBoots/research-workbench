@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChatGPT Handoff"
+  short_description: "Prepare Pro and Deep Research task handoffs"
+  default_prompt: "Use $chatgpt-handoff to prepare and publish this task for ChatGPT Pro or Deep Research."
