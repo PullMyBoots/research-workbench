@@ -80,6 +80,27 @@ class MultiProblemWorkspaceTests(unittest.TestCase):
         self.assertEqual((workspace / ".discovery").resolve(), (self.topic / ".discovery").resolve())
         self.assertEqual((workspace / ".agents").resolve(), (self.topic / ".agents").resolve())
 
+    def test_registry_rejects_noncanonical_problem_path(self) -> None:
+        self.create_problem("problem-a")
+        registry = DISCOVERY.read_problem_registry(self.topic)
+        registry["problems"][0]["path"] = "problems/problem-a"
+        DISCOVERY.write_json(self.topic / ".DiscoveryProgram" / "problem_registry.json", registry)
+        with self.assertRaisesRegex(SystemExit, "must use canonical workspace subprojects-team/problem-a"):
+            DISCOVERY.problem_workspace(self.topic, "problem-a")
+
+    def test_unregistered_subprojects_team_directory_is_not_a_problem(self) -> None:
+        (self.topic / "subprojects-team" / "problem-a" / ".DiscoveryConsole").mkdir(parents=True)
+        with self.assertRaisesRegex(SystemExit, "unknown Problem"):
+            DISCOVERY.problem_workspace(self.topic, "problem-a")
+
+    def test_runtime_rejects_old_problems_directory_even_for_registered_id(self) -> None:
+        self.create_problem("problem-a")
+        old = self.topic / "problems" / "problem-a"
+        old.mkdir(parents=True)
+        DISCOVERY.write_json(old / "problem.json", {"problem_id": "problem-a"})
+        with self.assertRaisesRegex(SystemExit, "must run from canonical workspace subprojects-team/problem-a"):
+            DISCOVERY.resolve_problem_workspace(self.topic, old, "")
+
     def test_agent_creation_is_blocked_before_evaluator_is_configured(self) -> None:
         workspace = self.create_problem("problem-a")
         args = argparse.Namespace(agent_cmd="create", name="agent1", force=False)

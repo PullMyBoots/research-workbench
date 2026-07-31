@@ -5,7 +5,6 @@ import io
 import json
 import os
 import runpy
-import socket
 import tempfile
 import threading
 import time
@@ -142,12 +141,10 @@ class RouteRunLifecycleTests(unittest.TestCase):
         self.assertEqual(job["supervisor_pid"], 43210)
         self.assertEqual(job["status"], "starting")
 
-    def test_disconnected_route_client_does_not_kill_broker(self) -> None:
-        try:
-            server, thread = DISCOVERY.start_route_broker_server(self.workspace)
-        except PermissionError:
-            self.skipTest("Unix-domain sockets are unavailable in this execution environment")
-        socket_path = DISCOVERY.route_broker_socket_path(self.workspace)
+    def test_unread_file_response_does_not_kill_broker(self) -> None:
+        token = DISCOVERY.ensure_route_broker_token(self.agent)
+        server, thread = DISCOVERY.start_route_broker_server(self.workspace)
+        broker_root = DISCOVERY.route_broker_file_root(self.agent)
         first_started = threading.Event()
         release_first = threading.Event()
 
@@ -159,25 +156,49 @@ class RouteRunLifecycleTests(unittest.TestCase):
 
         try:
             with mock.patch.object(DISCOVERY, "route_broker_action", side_effect=action):
-                first = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                first.connect(str(socket_path))
-                first.sendall(json.dumps({"problem": "problem-a", "action": "slow"}).encode() + b"\n")
-                first.close()
+                DISCOVERY.write_json(
+                    broker_root / "requests" / ("1" * 32 + ".json"),
+                    {"problem": "problem-a", "route": "agent1", "token": token, "action": "slow"},
+                )
                 self.assertTrue(first_started.wait(1))
                 release_first.set()
                 time.sleep(0.05)
-
-                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as second:
-                    second.settimeout(1)
-                    second.connect(str(socket_path))
-                    second.sendall(json.dumps({"problem": "problem-a", "action": "fast"}).encode() + b"\n")
-                    second.shutdown(socket.SHUT_WR)
-                    response = json.loads(second.recv(65536).decode())
+                second_id = "2" * 32
+                DISCOVERY.write_json(
+                    broker_root / "requests" / f"{second_id}.json",
+                    {"problem": "problem-a", "route": "agent1", "token": token, "action": "fast"},
+                )
+                response_path = broker_root / "responses" / f"{second_id}.json"
+                deadline = time.monotonic() + 1
+                while not response_path.is_file() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                response = DISCOVERY.read_json(response_path, {})
                 self.assertTrue(response["ok"])
                 self.assertEqual(response["result"], {"value": "fast"})
                 self.assertTrue(thread.is_alive())
         finally:
             release_first.set()
+            server.shutdown()
+            server.server_close()
+            thread.join(1)
+
+    def test_route_client_round_trips_through_file_broker(self) -> None:
+        DISCOVERY.ensure_route_broker_token(self.agent)
+        server, thread = DISCOVERY.start_route_broker_server(self.workspace)
+        DISCOVERY.write_json(
+            DISCOVERY.route_broker_endpoint_path(self.workspace),
+            {"transport": "file", "pid": os.getpid(), "owner": "test"},
+        )
+        client = runpy.run_path(str(MODULE_PATH.parents[1] / "agents-template" / "explore"))
+        try:
+            with mock.patch.object(
+                DISCOVERY,
+                "route_broker_action",
+                return_value={"ok": True, "result": {"schema_version": 1}},
+            ):
+                result = client["request"](self.agent, self.workspace, "agent1", "context", {"job": "", "limit": 3})
+            self.assertEqual(result, {"ok": True, "result": {"schema_version": 1}})
+        finally:
             server.shutdown()
             server.server_close()
             thread.join(1)
@@ -781,6 +802,69 @@ class RouteRunLifecycleTests(unittest.TestCase):
         campaign = DISCOVERY.get_headless_campaign(self.workspace, campaign_id)
         self.assertEqual(campaign["no_progress_attempts"], 1)
         self.assertNotEqual(campaign.get("reason"), "headless_stage_made_no_state_progress")
+
+    def test_campaign_retries_transient_broker_failure_while_endpoint_is_live(self) -> None:
+        campaign_id = "campaign-a"
+        loop_state = DISCOVERY.read_json(self.agent / ".discovery" / "loop_state.json", {})
+        DISCOVERY.upsert_headless_run(
+            self.workspace,
+            {
+                "id": "headless-a",
+                "agent": "agent1",
+                "status": "done",
+                "reason": "completed",
+                "runner_action": "start_auditor",
+                "loop_state_before": loop_state,
+                "campaign_id": campaign_id,
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        DISCOVERY.upsert_headless_campaign(
+            self.workspace,
+            {
+                "id": campaign_id,
+                "agent": "agent1",
+                "status": "running",
+                "target_iterations": 1,
+                "completed_iterations": 0,
+                "completed_versions": [],
+                "current_version": "version-agent1-0001",
+                "active_run_id": "headless-a",
+                "last_processed_run_id": None,
+                "waiting_route_jobs": [],
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        route_status = {
+            "runner_action": "start_auditor",
+            "should_start_codex": True,
+            "goal_file": "headless_goals/route_auditor.md",
+        }
+        sleeps = 0
+
+        def stop_after_retry(_seconds: float) -> None:
+            nonlocal sleeps
+            sleeps += 1
+            if sleeps >= 2:
+                DISCOVERY.update_headless_campaign(self.workspace, campaign_id, {"status": "stopped"})
+
+        with mock.patch.object(
+            DISCOVERY, "headless_run_infrastructure_reason", return_value="headless_route_broker_unavailable"
+        ), mock.patch.object(
+            DISCOVERY, "route_broker_is_available", return_value=True
+        ), mock.patch.object(
+            DISCOVERY, "build_dashboard_agent_statuses", return_value=[route_status]
+        ), mock.patch.object(
+            DISCOVERY, "launch_dashboard_headless_goal", return_value={"run": "headless-b"}
+        ) as launch, mock.patch.object(
+            DISCOVERY.time, "sleep", side_effect=stop_after_retry
+        ):
+            DISCOVERY.cmd_headless_campaign(self.workspace, campaign_id, poll_seconds=0.01)
+
+        launch.assert_called_once()
+        campaign = DISCOVERY.get_headless_campaign(self.workspace, campaign_id)
+        self.assertEqual(campaign["infrastructure_retry_attempts"], 1)
+        self.assertNotEqual(campaign.get("reason"), "headless_route_broker_unavailable")
 
     def test_campaign_blocks_after_its_bounded_no_progress_retry(self) -> None:
         campaign_id = "campaign-a"

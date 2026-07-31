@@ -3,7 +3,7 @@ name: explore-cli
 description: Use inside one Discovery Route workspace to read public Route context, run or queue development experiments, submit a Candidate, and record an evaluated Version reflection through the Route-only Broker client.
 ---
 
-<!-- explore-cli-protocol: 8 -->
+<!-- explore-cli-protocol: 9 -->
 
 # Explore CLI — Route Client
 
@@ -20,7 +20,7 @@ Use only this Route-local executable:
 knowledge/Notice mutation, and other-Route operations are unavailable here.
 
 The Route is writable, shared Problem `pub` is read-only, and Problem `private`
-is denied. Control-plane mutations use the authenticated Unix-socket Broker.
+is denied. Control-plane requests use the authenticated worker-owned file Broker.
 If the Broker is unavailable, ask Human/Main to run `./discovery start --problem
 <id>` from the Topic root; never request a broader sandbox.
 

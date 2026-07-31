@@ -21,6 +21,7 @@ import shutil
 import signal
 import socket
 import socketserver
+import stat
 import subprocess
 import sys
 import threading
@@ -49,7 +50,7 @@ AGENT_NAME_RE = re.compile(r"agent[A-Za-z0-9_-]*\Z")
 SAFE_ID_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 VERSION_RE = re.compile(r"version-[A-Za-z0-9_.-]+\Z")
 PENDING_HANDOFF_FILE = ".handoff-pending.json"
-ROUTE_CLI_PROTOCOL = 8
+ROUTE_CLI_PROTOCOL = 9
 ROUTE_CLI_PROTOCOL_MARKER = f"explore-cli-protocol: {ROUTE_CLI_PROTOCOL}"
 DEFAULT_ATTACHED_WAIT_TIMEOUT_SECONDS = 1500.0
 # The Route client needs a little margin beyond the Broker's configured wait
@@ -201,9 +202,8 @@ def route_broker_server_token_path(agent_dir: Path) -> Path:
     return private(agent_dir.parent) / "route_broker_tokens" / f"{safe_id(agent_dir.name, 'Route id')}.token"
 
 
-def route_broker_socket_path(workspace: Path) -> Path:
-    digest = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:20]
-    return Path("/tmp") / f"discovery-route-{digest}.sock"
+def route_broker_file_root(agent_dir: Path) -> Path:
+    return agent_dir / ".tmp" / "route_broker"
 
 
 def route_broker_is_available(workspace: Path, *, expected_pid: int | None = None) -> bool:
@@ -215,14 +215,14 @@ def route_broker_is_available(workspace: Path, *, expected_pid: int | None = Non
         return False
     if expected_pid is not None and pid != expected_pid:
         return False
-    socket_value = str(endpoint.get("socket") or "")
-    if not socket_value:
+    if endpoint.get("transport") != "file":
         return False
-    try:
-        socket_path = Path(socket_value)
-        return socket_path.resolve() == route_broker_socket_path(workspace).resolve() and socket_path.exists()
-    except OSError:
-        return False
+    routes = [path for path in workspace.iterdir() if path.is_dir() and AGENT_NAME_RE.fullmatch(path.name)]
+    return all(
+        (route_broker_file_root(route) / "requests").is_dir()
+        and (route_broker_file_root(route) / "responses").is_dir()
+        for route in routes
+    )
 
 
 def ensure_route_broker_token(agent_dir: Path) -> str:
@@ -464,14 +464,17 @@ def registered_problems(topic: Path) -> list[dict[str, Any]]:
 
 def problem_workspace(topic: Path, problem_id: str) -> Path:
     safe_id(problem_id, "problem id")
+    expected = (topic / TEAM_SUBPROJECTS_DIR / problem_id).resolve()
     for row in registered_problems(topic):
         if str(row.get("id")) == problem_id:
-            raw = Path(str(row.get("path") or Path(TEAM_SUBPROJECTS_DIR) / problem_id))
-            path = raw if raw.is_absolute() else topic / raw
-            return require_under(path, topic / TEAM_SUBPROJECTS_DIR, "Problem workspace")
-    fallback = topic / TEAM_SUBPROJECTS_DIR / problem_id
-    if (fallback / ROOT_MARKER).is_dir():
-        return fallback
+            raw = Path(str(row.get("path") or ""))
+            path = (raw if raw.is_absolute() else topic / raw).resolve()
+            if path != expected:
+                raise SystemExit(
+                    f"Problem {problem_id} must use canonical workspace "
+                    f"{TEAM_SUBPROJECTS_DIR}/{problem_id}; registry points to {row.get('path') or '<missing>'}"
+                )
+            return expected
     raise SystemExit(f"unknown Problem: {problem_id}")
 
 
@@ -479,7 +482,14 @@ def resolve_problem_workspace(topic: Path, current: Path | None, requested: str 
     if requested:
         return problem_workspace(topic, requested)
     if current is not None:
-        return current
+        problem_id = current_problem_id(current)
+        canonical = problem_workspace(topic, problem_id)
+        if current.resolve() != canonical:
+            raise SystemExit(
+                f"Problem {problem_id} must run from canonical workspace "
+                f"{TEAM_SUBPROJECTS_DIR}/{problem_id}"
+            )
+        return canonical
     registry = read_problem_registry(topic)
     default = str(registry.get("default_problem") or "")
     if default:
@@ -1706,6 +1716,17 @@ def route_client_integrity_report(workspace: Path) -> dict[str, Any]:
             issues.append({"route": route.name, "issue": "missing_or_incompatible_explore_client"})
         if client.is_file() and client.stat().st_mode & 0o222:
             issues.append({"route": route.name, "issue": "explore_client_is_writable"})
+        if client.is_file():
+            expected_hint = f'PROBLEM_ROOT_HINT = "{workspace.resolve()}"'
+            if expected_hint not in client.read_text(encoding="utf-8", errors="ignore"):
+                issues.append({"route": route.name, "issue": "explore_client_problem_root_is_stale"})
+        pub_link = route / "pub"
+        try:
+            public_target = pub_link.readlink()
+        except OSError:
+            public_target = None
+        if public_target is None or not public_target.is_absolute() or public_target != pub(workspace).resolve():
+            issues.append({"route": route.name, "issue": "route_pub_link_is_not_canonical"})
         config = route / ".codex" / "config.toml"
         if config.is_file() and topic_runtime in config.read_text(encoding="utf-8", errors="ignore"):
             issues.append({"route": route.name, "issue": "route_permission_reads_topic_runtime"})
@@ -2007,6 +2028,21 @@ def headless_campaign_index(workspace: Path) -> Path:
 
 def headless_campaign_lock_path(workspace: Path) -> Path:
     return pub(workspace) / "log" / "headless_campaigns.lock"
+
+
+def headless_run_infrastructure_reason(workspace: Path, run: dict[str, Any]) -> str:
+    """Recover deterministic infrastructure failures hidden by a clean model exit."""
+    raw_log = str(run.get("log") or "")
+    if not raw_log:
+        return ""
+    try:
+        log_path = require_under(workspace / raw_log, pub(workspace) / "log", "headless log")
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if "Explore broker is unavailable; ask Human/Main to run" in text:
+        return "headless_route_broker_unavailable"
+    return ""
 
 
 def with_headless_campaign_lock(workspace: Path):
@@ -3246,42 +3282,71 @@ def is_dashboard_regression(delta: float, direction: str) -> bool:
     return delta < 0 if direction == "higher" else delta > 0
 
 
-def start_route_broker_server(workspace: Path) -> tuple[socketserver.UnixStreamServer, threading.Thread]:
-    socket_path = route_broker_socket_path(workspace).resolve()
-    socket_path.parent.mkdir(parents=True, exist_ok=True)
-    socket_path.unlink(missing_ok=True)
+class FileRouteBrokerServer:
+    """Worker-owned broker using Route-local request/response files."""
 
-    class BrokerHandler(socketserver.StreamRequestHandler):
-        def handle(self) -> None:
-            try:
-                raw = self.rfile.readline(1024 * 1024 + 1)
-                if not raw or len(raw) > 1024 * 1024:
-                    raise SystemExit("Route broker request is empty or exceeds 1 MiB")
-                data = json.loads(raw.decode("utf-8"))
-                if not isinstance(data, dict):
-                    raise SystemExit("Route broker request must be a JSON object")
-                if str(data.get("problem") or "") != current_problem_id(workspace):
-                    raise SystemExit("Route broker Problem id mismatch")
-                payload = route_broker_action(workspace, data, str(data.get("token") or ""))
-            except SystemExit as exc:
-                payload = {"ok": False, "error": str(exc)}
-            except Exception as exc:
-                payload = {"ok": False, "error": str(exc)}
-            try:
-                self.wfile.write((json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
-                self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, OSError):
-                # The Job is persisted independently of this request.  Codex
-                # closing a Turn is therefore a client disconnect, not a
-                # Runtime failure and not a reason to stop the Job.
-                return
+    def __init__(self, workspace: Path):
+        self.workspace = workspace
+        self.stop_event = threading.Event()
 
-    class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
-        daemon_threads = True
-        request_queue_size = 128
+    def prepare(self) -> None:
+        for route in sorted(path for path in self.workspace.iterdir() if path.is_dir() and AGENT_NAME_RE.fullmatch(path.name)):
+            root = route_broker_file_root(route)
+            (root / "requests").mkdir(parents=True, exist_ok=True)
+            (root / "responses").mkdir(parents=True, exist_ok=True)
 
-    server = ThreadingUnixServer(str(socket_path), BrokerHandler)
-    socket_path.chmod(0o600)
+    def _handle(self, route: Path, processing: Path, request_id: str) -> None:
+        try:
+            if processing.is_symlink() or not processing.is_file() or processing.stat().st_size > 1024 * 1024:
+                raise SystemExit("Route broker request is invalid or exceeds 1 MiB")
+            data = json.loads(processing.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise SystemExit("Route broker request must be a JSON object")
+            if str(data.get("problem") or "") != current_problem_id(self.workspace):
+                raise SystemExit("Route broker Problem id mismatch")
+            data["route"] = route.name
+            payload = route_broker_action(self.workspace, data, str(data.get("token") or ""))
+        except SystemExit as exc:
+            payload = {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            payload = {"ok": False, "error": str(exc)}
+        finally:
+            processing.unlink(missing_ok=True)
+        write_json(route_broker_file_root(route) / "responses" / f"{request_id}.json", payload)
+
+    def serve_forever(self) -> None:
+        self.prepare()
+        while not self.stop_event.wait(0.05):
+            for route in sorted(path for path in self.workspace.iterdir() if path.is_dir() and AGENT_NAME_RE.fullmatch(path.name)):
+                request_dir = route_broker_file_root(route) / "requests"
+                request_dir.mkdir(parents=True, exist_ok=True)
+                for request_path in request_dir.glob("*.json"):
+                    request_id = request_path.stem
+                    if not re.fullmatch(r"[0-9a-f]{32}", request_id):
+                        request_path.unlink(missing_ok=True)
+                        continue
+                    processing = request_path.with_suffix(".processing")
+                    try:
+                        request_path.replace(processing)
+                    except OSError:
+                        continue
+                    threading.Thread(
+                        target=self._handle,
+                        args=(route, processing, request_id),
+                        name=f"discovery-route-request-{route.name}-{request_id[:8]}",
+                        daemon=True,
+                    ).start()
+
+    def shutdown(self) -> None:
+        self.stop_event.set()
+
+    def server_close(self) -> None:
+        return
+
+
+def start_route_broker_server(workspace: Path) -> tuple[FileRouteBrokerServer, threading.Thread]:
+    server = FileRouteBrokerServer(workspace)
+    server.prepare()
     thread = threading.Thread(target=server.serve_forever, name=f"discovery-route-broker-{current_problem_id(workspace)}", daemon=True)
     thread.start()
     return server, thread
@@ -6351,10 +6416,17 @@ def cmd_agent(workspace: Path, args: argparse.Namespace) -> None:
         require_under(target, workspace, "agent target")
         shutil.rmtree(target)
     shutil.copytree(template, target)
+    # A source template may itself have been made read-only after a previous
+    # Route was rendered.  Restore owner-write permission until placeholders
+    # have been rendered, then make the client immutable again below.
+    explore_client = target / "explore"
+    explore_client.chmod(explore_client.stat().st_mode | stat.S_IWUSR)
     pub_link = target / "pub"
     if pub_link.exists() or pub_link.is_symlink():
         pub_link.unlink()
-    pub_link.symlink_to(Path("..") / ".DiscoveryConsole" / "pub")
+    # Keep pub usable when Codex presents the writable Route through a
+    # synthetic mount with a different parent directory.
+    pub_link.symlink_to(pub(workspace).resolve(), target_is_directory=True)
     install_root = codex_install_root()
     if install_root is None:
         raise SystemExit("Codex installation root is unavailable; cannot render Route permission config")
@@ -6363,19 +6435,18 @@ def cmd_agent(workspace: Path, args: argparse.Namespace) -> None:
         "{python_prefix}": str(Path(sys.prefix).resolve()),
         "{codex_install_root}": str(install_root.resolve()),
         "{problem_root}": str(workspace.resolve()),
-        "{broker_socket}": str(route_broker_socket_path(workspace).resolve()),
     }
     for token, value in replacements.items():
         replace_token(target, token, value)
-    (target / "explore").chmod(0o755)
+    explore_client.chmod(0o555)
     ensure_agent_git(target)
     ensure_route_broker_token(target)
-    print(json.dumps({"created": name, "problem_id": current_problem_id(workspace), "path": str(target), "pub": "pub -> ../.DiscoveryConsole/pub"}, indent=2))
+    print(json.dumps({"created": name, "problem_id": current_problem_id(workspace), "path": str(target), "pub": f"pub -> {pub(workspace).resolve()}"}, indent=2))
 
 
 def replace_token(root: Path, token: str, value: str) -> None:
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix in {".md", ".sh", ".json", ".py", ".toml"}:
+        if path.is_file() and (path.suffix in {".md", ".sh", ".json", ".py", ".toml"} or path.name in {"explore", "review"}):
             text = path.read_text(encoding="utf-8")
             if token in text:
                 path.write_text(text.replace(token, value), encoding="utf-8")
@@ -9008,6 +9079,7 @@ def launch_and_wait_job(workspace: Path, job: dict[str, Any], *, allocated_gpus:
         route_tmp = agent_dir / ".tmp"
         route_tmp.mkdir(exist_ok=True)
         env["TMPDIR"] = str(route_tmp)
+        env["DISCOVERY_PROBLEM_ROOT"] = str(workspace.resolve())
         command = [
             "codex",
             "sandbox",
@@ -9421,14 +9493,14 @@ def cmd_worker(workspace: Path, args: argparse.Namespace) -> None:
         _run_worker_loop(workspace, args)
         return
     endpoint_path = route_broker_endpoint_path(workspace)
-    broker_server: socketserver.UnixStreamServer | None = None
+    broker_server: FileRouteBrokerServer | None = None
     broker_thread: threading.Thread | None = None
     try:
         broker_server, broker_thread = start_route_broker_server(workspace)
         write_json(
             endpoint_path,
             {
-                "socket": str(route_broker_socket_path(workspace).resolve()),
+                "transport": "file",
                 "pid": os.getpid(),
                 "owner": "worker",
                 "started_at": now(),
@@ -9439,7 +9511,7 @@ def cmd_worker(workspace: Path, args: argparse.Namespace) -> None:
         update_dashboard_worker_for_pid(
             workspace,
             os.getpid(),
-            {"broker": {"status": "ready", "socket": str(route_broker_socket_path(workspace).resolve())}},
+            {"broker": {"status": "ready", "transport": "file"}},
         )
         _run_worker_loop(workspace, args)
     finally:
@@ -9451,7 +9523,6 @@ def cmd_worker(workspace: Path, args: argparse.Namespace) -> None:
         endpoint = read_json(endpoint_path, {})
         if isinstance(endpoint, dict) and endpoint.get("pid") == os.getpid():
             endpoint_path.unlink(missing_ok=True)
-            route_broker_socket_path(workspace).unlink(missing_ok=True)
 
 
 def _run_worker_loop(workspace: Path, args: argparse.Namespace) -> None:
@@ -9927,7 +9998,6 @@ def route_permission_overrides(workspace: Path, agent_dir: Path) -> list[str]:
         str((workspace / "problem.json").resolve()): "read",
         str(pub(workspace).resolve()): "read",
         str(private(workspace).resolve()): "deny",
-        str(route_broker_socket_path(workspace)): "read",
     }
     install_root = codex_install_root()
     if install_root is not None:
@@ -9942,10 +10012,6 @@ def route_permission_overrides(workspace: Path, agent_dir: Path) -> list[str]:
         "permissions.discovery_route.network.enabled=true",
         "--config",
         'permissions.discovery_route.network.domains={"*"="allow"}',
-        "--config",
-        "permissions.discovery_route.network.unix_sockets={"
-        + json.dumps(str(route_broker_socket_path(workspace).resolve()))
-        + '="allow"}',
     ]
 
 
@@ -10072,6 +10138,43 @@ def cmd_headless_campaign(workspace: Path, campaign_id: str, *, poll_seconds: fl
                 before = completed_run.get("loop_state_before")
                 current_state = read_json(agent_dir / ".discovery" / "loop_state.json", {})
                 if isinstance(before, dict) and before == current_state:
+                    infrastructure_reason = headless_run_infrastructure_reason(workspace, completed_run)
+                    if infrastructure_reason:
+                        retry_attempts = int(campaign.get("infrastructure_retry_attempts") or 0) + 1
+                        max_retries = int(campaign.get("max_infrastructure_retries") or 2)
+                        if route_broker_is_available(workspace) and retry_attempts <= max_retries:
+                            # A Route may observe a short endpoint/token visibility
+                            # race while a freshly restarted file Broker is becoming
+                            # visible in its sandbox.  The live endpoint is
+                            # authoritative, so retry the same role a bounded number
+                            # of times instead of permanently blocking the Campaign.
+                            update_headless_campaign(
+                                workspace,
+                                campaign_id,
+                                {
+                                    "last_processed_run_id": active_run_id,
+                                    "active_run_id": None,
+                                    "current_stage": "retry_after_infrastructure",
+                                    "infrastructure_retry_attempts": retry_attempts,
+                                    "last_infrastructure_reason": infrastructure_reason,
+                                    "updated_at": now(),
+                                },
+                            )
+                            time.sleep(poll_seconds)
+                            campaign = get_headless_campaign(workspace, campaign_id)
+                            continue
+                        update_headless_campaign(
+                            workspace,
+                            campaign_id,
+                            {
+                                "status": "blocked",
+                                "reason": infrastructure_reason,
+                                "failed_run_id": active_run_id,
+                                "finished_at": now(),
+                                "updated_at": now(),
+                            },
+                        )
+                        return
                     associated_jobs = route_builder_jobs(
                         workspace,
                         agent,
@@ -10160,7 +10263,13 @@ def cmd_headless_campaign(workspace: Path, campaign_id: str, *, poll_seconds: fl
                 update_headless_campaign(
                     workspace,
                     campaign_id,
-                    {"last_processed_run_id": active_run_id, "active_run_id": None, "no_progress_attempts": 0, "updated_at": now()},
+                    {
+                        "last_processed_run_id": active_run_id,
+                        "active_run_id": None,
+                        "no_progress_attempts": 0,
+                        "infrastructure_retry_attempts": 0,
+                        "updated_at": now(),
+                    },
                 )
                 campaign = get_headless_campaign(workspace, campaign_id)
 
@@ -10261,6 +10370,7 @@ def cmd_headless_goal(workspace: Path, run_id: str) -> None:
             child_env["TMPDIR"] = str(route_tmp)
             child_env["DISCOVERY_HEADLESS_RUN_ID"] = run_id
             child_env["DISCOVERY_HEADLESS_CAMPAIGN_ID"] = str(run.get("campaign_id") or "")
+            child_env["DISCOVERY_PROBLEM_ROOT"] = str(workspace.resolve())
             child_env.update(build_resource_env(resources, list(resources["gpus"])))
             command = resource_runner_command(command, resources)
             proc = subprocess.Popen(command, cwd=agent_dir, env=child_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True, bufsize=1)

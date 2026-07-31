@@ -18,7 +18,6 @@ description = "Discovery Route: writable research workspace, read-only control p
 "{problem_root}/problem.json" = "read"
 "{problem_root}/.DiscoveryConsole/pub" = "read"
 "{problem_root}/.DiscoveryConsole/private" = "deny"
-"{broker_socket}" = "read"
 
 [permissions.discovery_route.filesystem.":workspace_roots"]
 "." = "write"
@@ -37,6 +36,3 @@ allow_local_binding = false
 
 [permissions.discovery_route.network.domains]
 "*" = "allow"
-
-[permissions.discovery_route.network.unix_sockets]
-"{broker_socket}" = "allow"

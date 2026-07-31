@@ -7,20 +7,22 @@ import argparse
 import json
 import os
 import re
-import socket
+import secrets
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 
-PROTOCOL = 8
+PROTOCOL = 9
 AGENT_NAME_RE = re.compile(r"agent[A-Za-z0-9_-]*\Z")
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 WAIT_RESPONSE_TIMEOUT_SECONDS = 1805
+BROKER_CONNECT_RETRY_SECONDS = 5.0
 TERMINAL_JOB_STATUSES = {"done", "failed", "cancelled", "stale"}
 JOB_HEARTBEAT_SECONDS = 5.0
 PROGRESS_EMIT_SECONDS = 2.0
+PROBLEM_ROOT_HINT = "{problem_root}"
 
 
 def parser() -> argparse.ArgumentParser:
@@ -62,75 +64,99 @@ def parser() -> argparse.ArgumentParser:
 
 
 def route_identity() -> tuple[Path, Path, str]:
-    route = Path(__file__).resolve().parent
-    problem = route.parent
-    if not AGENT_NAME_RE.fullmatch(route.name) or not (problem / ".DiscoveryConsole" / "pub").is_dir():
+    # Codex may expose the writable Route through a synthetic mount whose
+    # parent is not the real Problem directory.  Validate the working copy
+    # locally, but use the canonical Problem path rendered at Route creation
+    # for public state, broker access, logs, and the Route credential.
+    cwd = Path.cwd().resolve()
+    local_route = next(
+        (
+            path
+            for path in (cwd, *cwd.parents)
+            if AGENT_NAME_RE.fullmatch(path.name) and (path / ".discovery" / "broker_token").is_file()
+        ),
+        Path(),
+    )
+    configured_problem = os.environ.get("DISCOVERY_PROBLEM_ROOT", "").strip() or PROBLEM_ROOT_HINT
+    problem = Path(configured_problem).resolve() if configured_problem and "{" not in configured_problem else local_route.parent
+    if (
+        not AGENT_NAME_RE.fullmatch(local_route.name)
+        or not (problem / ".DiscoveryConsole" / "pub").is_dir()
+    ):
         raise SystemExit("`./explore` is valid only inside a Discovery Route workspace")
     try:
-        Path.cwd().resolve().relative_to(route)
+        cwd.relative_to(local_route)
     except ValueError:
         raise SystemExit("`./explore` must be run from its Route workspace, not a Main/Problem control directory") from None
-    return route, problem, route.name
+    return local_route, problem, local_route.name
 
 
-def broker_unavailable(problem_id: str) -> SystemExit:
-    return SystemExit(
-        f"Explore broker is unavailable; ask Human/Main to run `./discovery start --problem {problem_id}` from the Topic root"
-    )
+def broker_unavailable(problem_id: str, detail: str = "") -> SystemExit:
+    message = f"Explore broker is unavailable; ask Human/Main to run `./discovery start --problem {problem_id}` from the Topic root"
+    if detail:
+        message += f" (detail: {detail})"
+    return SystemExit(message)
 
 
 def request(route: Path, problem: Path, route_id: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
     endpoint_path = problem / ".DiscoveryConsole" / "pub" / "log" / "route_broker.json"
     token_path = route / ".discovery" / "broker_token"
-    try:
-        endpoint = json.loads(endpoint_path.read_text(encoding="utf-8"))
-        socket_path = Path(str(endpoint.get("socket") or ""))
-        token = token_path.read_text(encoding="utf-8").strip()
-    except (OSError, json.JSONDecodeError):
-        raise broker_unavailable(problem.name) from None
-    if not socket_path.is_absolute() or len(token) < 32:
+    connect_deadline = time.monotonic() + BROKER_CONNECT_RETRY_SECONDS
+    connect_error = "endpoint not ready"
+    while True:
+        try:
+            endpoint = json.loads(endpoint_path.read_text(encoding="utf-8"))
+            token = token_path.read_text(encoding="utf-8").strip()
+            break
+        except (OSError, json.JSONDecodeError) as exc:
+            connect_error = f"endpoint/token read failed: {type(exc).__name__}: {exc}"
+            if time.monotonic() >= connect_deadline:
+                raise broker_unavailable(problem.name, connect_error) from None
+            time.sleep(0.05)
+    if endpoint.get("transport") != "file" or len(token) < 32:
         raise broker_unavailable(problem.name)
-    body = json.dumps(
-        {
-            **payload,
-            "problem": problem.name,
-            "route": route_id,
-            "action": action,
-            "token": token,
-            "headless_run_id": os.environ.get("DISCOVERY_HEADLESS_RUN_ID", ""),
-            "campaign_id": os.environ.get("DISCOVERY_HEADLESS_CAMPAIGN_ID", ""),
-        },
-        ensure_ascii=False,
-    ).encode("utf-8") + b"\n"
+    request_id = secrets.token_hex(16)
+    broker_root = route / ".tmp" / "route_broker"
+    request_dir = broker_root / "requests"
+    response_path = broker_root / "responses" / f"{request_id}.json"
+    body = {
+        **payload,
+        "problem": problem.name,
+        "route": route_id,
+        "action": action,
+        "token": token,
+        "headless_run_id": os.environ.get("DISCOVERY_HEADLESS_RUN_ID", ""),
+        "campaign_id": os.environ.get("DISCOVERY_HEADLESS_CAMPAIGN_ID", ""),
+    }
+    timeout = WAIT_RESPONSE_TIMEOUT_SECONDS if payload.get("completion") == "wait" else 300
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            # A wait request is intentionally one long blocking Tool call. It
-            # needs a margin beyond the Runtime's configured wait window to
-            # receive a terminal or handoff response.
-            client.settimeout(WAIT_RESPONSE_TIMEOUT_SECONDS if payload.get("completion") == "wait" else 300)
-            client.connect(str(socket_path))
-            client.sendall(body)
-            client.shutdown(socket.SHUT_WR)
-            chunks: list[bytes] = []
-            size = 0
-            while True:
-                chunk = client.recv(65536)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                size += len(chunk)
-                if size > MAX_RESPONSE_BYTES:
+        request_dir.mkdir(parents=True, exist_ok=True)
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        request_path = request_dir / f"{request_id}.json"
+        pending_path = request_dir / f".{request_id}.tmp"
+        pending_path.write_text(json.dumps(body, ensure_ascii=False) + "\n", encoding="utf-8")
+        pending_path.replace(request_path)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if response_path.is_file():
+                raw = response_path.read_bytes()
+                if len(raw) > MAX_RESPONSE_BYTES:
                     raise ValueError("broker response exceeded 4 MiB")
-        result = json.loads(b"".join(chunks).decode("utf-8"))
+                result = json.loads(raw.decode("utf-8"))
+                response_path.unlink(missing_ok=True)
+                break
+            time.sleep(0.05)
+        else:
+            raise TimeoutError
     except TimeoutError:
         if action in {"run.local", "run.queued"}:
             raise SystemExit(
                 "Route Job wait disconnected after submission. The Job remains tracked; inspect it with "
                 "`./explore context --job <job-id>` and record a Continuation Checkpoint instead of resubmitting."
             ) from None
-        raise broker_unavailable(problem.name) from None
-    except (OSError, ValueError, json.JSONDecodeError):
-        raise broker_unavailable(problem.name) from None
+        raise broker_unavailable(problem.name, "response timed out") from None
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise broker_unavailable(problem.name, f"request/response failed: {type(exc).__name__}: {exc}") from None
     if not isinstance(result, dict) or result.get("ok") is False:
         raise SystemExit(str(result.get("error") if isinstance(result, dict) else "invalid Broker response"))
     return result

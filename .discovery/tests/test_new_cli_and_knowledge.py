@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -570,6 +571,67 @@ class NewCliSurfaceTests(unittest.TestCase):
         self.assertIn("{context,knowledge,run,eval,reflect}", result.stdout)
         self.assertNotIn("maintain", result.stdout)
 
+    def test_route_identity_survives_a_synthetic_writable_mount(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            problem = root / "canonical" / "problem-a"
+            canonical_route = problem / "agent1"
+            (problem / ".DiscoveryConsole" / "pub").mkdir(parents=True)
+            canonical_route.mkdir()
+            synthetic_route = root / "synthetic" / "agent1"
+            synthetic_route.mkdir(parents=True)
+            (synthetic_route / ".discovery").mkdir()
+            (synthetic_route / ".discovery" / "broker_token").write_text("x" * 32, encoding="utf-8")
+            template = (MODULE_PATH.parents[2] / ".discovery" / "agents-template" / "explore").read_text(encoding="utf-8")
+            client = synthetic_route / "explore"
+            client.write_text(template.replace("{problem_root}", str(problem.resolve())), encoding="utf-8")
+            probe = (
+                "import os, runpy; "
+                f"os.chdir({str(synthetic_route)!r}); "
+                f"ns=runpy.run_path({str(client)!r}); "
+                "route, problem, route_id=ns['route_identity'](); "
+                "print(route); print(problem); print(route_id)"
+            )
+            result = subprocess.run([sys.executable, "-c", probe], text=True, capture_output=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                result.stdout.splitlines(),
+                [str(synthetic_route.resolve()), str(problem.resolve()), "agent1"],
+            )
+
+    def test_route_creation_renders_canonical_problem_and_public_link(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            topic = Path(tmp) / "topic"
+            problem = topic / "subprojects-team" / "problem-a"
+            public = problem / ".DiscoveryConsole" / "pub"
+            public.mkdir(parents=True)
+            (topic / ".DiscoveryProgram").mkdir()
+            template = MODULE_PATH.parents[2] / ".discovery" / "agents-template"
+            shutil.copytree(template, topic / ".discovery" / "agents-template")
+            (topic / ".discovery" / "agents-template" / "explore").chmod(0o555)
+            args = argparse.Namespace(agent_cmd="create", name="agent1", force=False)
+            with mock.patch.object(DISCOVERY, "load_evaluation_contract", return_value={"configured": True}), mock.patch.object(
+                DISCOVERY, "load_evaluation_registry", return_value={"configured": True}
+            ), mock.patch.object(DISCOVERY, "validate_evaluation_pair"), mock.patch.object(
+                DISCOVERY, "codex_install_root", return_value=Path(sys.prefix)
+            ), mock.patch.object(DISCOVERY, "ensure_agent_git"), mock.patch.object(
+                DISCOVERY, "ensure_route_broker_token", return_value="token"
+            ), mock.patch.object(DISCOVERY, "current_problem_id", return_value="problem-a"):
+                DISCOVERY.cmd_agent(problem, args)
+            route = problem / "agent1"
+            self.assertEqual((route / "pub").readlink(), public.resolve())
+            self.assertEqual((route / "explore").stat().st_mode & 0o222, 0)
+            self.assertIn(
+                f'PROBLEM_ROOT_HINT = "{problem.resolve()}"',
+                (route / "explore").read_text(encoding="utf-8"),
+            )
+            config = (route / ".codex" / "config.toml").read_text(encoding="utf-8")
+            filesystem, network = config.split("[permissions.discovery_route.network]", 1)
+            self.assertIn(str(problem.resolve()), filesystem)
+            self.assertNotIn("/problems/problem-a", config)
+            self.assertNotIn("discovery-route-", filesystem)
+            self.assertNotIn("unix_sockets", network)
+
     def test_route_knowledge_filter_cannot_override_authenticated_identity(self) -> None:
         topic = MODULE_PATH.parents[2]
         template = (topic / ".discovery" / "agents-template" / "explore").read_text(encoding="utf-8")
@@ -599,7 +661,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             second.mkdir(parents=True)
             route_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
             route_skill.parent.mkdir(parents=True)
-            route_skill.write_text("<!-- explore-cli-protocol: 8 -->", encoding="utf-8")
+            route_skill.write_text("<!-- explore-cli-protocol: 9 -->", encoding="utf-8")
             template_query_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
             template_query_skill.parent.mkdir(parents=True)
             template_query_skill.write_text("<!-- knowledge-query-protocol: 1 -->", encoding="utf-8")
@@ -681,7 +743,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             skill.write_text("legacy commands", encoding="utf-8")
             self.assertFalse(DISCOVERY.route_cli_protocol_ready(workspace, "agent1"))
             client.write_text("#!/bin/sh\n", encoding="utf-8")
-            skill.write_text("<!-- explore-cli-protocol: 8 -->", encoding="utf-8")
+            skill.write_text("<!-- explore-cli-protocol: 9 -->", encoding="utf-8")
             query_skill.parent.mkdir(parents=True)
             query_skill.write_text("<!-- knowledge-query-protocol: 1 -->", encoding="utf-8")
             self.assertTrue(DISCOVERY.route_cli_protocol_ready(workspace, "agent1"))
@@ -718,7 +780,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             (agent / "explore").write_text("#!/bin/sh\n", encoding="utf-8")
             skill = agent / ".agents" / "skills" / "explore-cli" / "SKILL.md"
             skill.parent.mkdir(parents=True)
-            skill.write_text("<!-- explore-cli-protocol: 8 -->", encoding="utf-8")
+            skill.write_text("<!-- explore-cli-protocol: 9 -->", encoding="utf-8")
             query_skill = agent / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
             query_skill.parent.mkdir(parents=True)
             query_skill.write_text("<!-- knowledge-query-protocol: 1 -->", encoding="utf-8")
@@ -810,7 +872,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             self.assertEqual(result["result"], expected)
             self.assertEqual(browse.call_args.kwargs["route"], "agent2")
 
-    def test_route_permission_profile_allows_web_and_broker_but_denies_private(self) -> None:
+    def test_route_permission_profile_allows_file_broker_and_denies_private(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             topic = Path(tmp) / "topic"
             workspace = topic / "subprojects-team" / "problem-a"
@@ -821,7 +883,9 @@ class NewCliSurfaceTests(unittest.TestCase):
             agent.mkdir(parents=True)
             overrides = DISCOVERY.route_permission_overrides(workspace, agent)
             joined = "\n".join(overrides)
-            self.assertIn("network.unix_sockets", joined)
+            filesystem = next(value for value in overrides if value.startswith("permissions.discovery_route.filesystem="))
+            self.assertNotIn("network.unix_sockets", joined)
+            self.assertNotIn("discovery-route-", filesystem)
             self.assertIn('network.domains={"*"="allow"}', joined)
             self.assertIn(str(DISCOVERY.private(workspace).resolve()), joined)
             self.assertIn(str((agent / ".codex").resolve()), joined)
@@ -841,7 +905,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             (agent / "explore").write_text("#!/bin/sh\n", encoding="utf-8")
             skill = agent / ".agents" / "skills" / "explore-cli" / "SKILL.md"
             skill.parent.mkdir(parents=True)
-            skill.write_text("<!-- explore-cli-protocol: 8 -->", encoding="utf-8")
+            skill.write_text("<!-- explore-cli-protocol: 9 -->", encoding="utf-8")
             query_skill = agent / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
             query_skill.parent.mkdir(parents=True)
             query_skill.write_text("<!-- knowledge-query-protocol: 1 -->", encoding="utf-8")

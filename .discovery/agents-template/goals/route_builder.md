@@ -103,6 +103,13 @@ write an evidence-bounded no-Candidate handoff naming what was tested, why it
 failed, what remains uncertain, and which Main decision could reopen the search;
 then stop with state unchanged.
 
+Before leaving Notebook Chapter 2, add a separate `Broad Exploration
+Confirmation` subsection after the process notes. Explicitly confirm that broad
+exploration has found the most valuable direction to promote and explain the
+reasons fully from the recorded evidence. If you cannot yet make that
+confirmation, say why and continue Phase 1. Do not begin Phase 2 before the
+confirmation and rationale are written.
+
 ### Phase 2: Mechanize, Maximize, And Harden
 
 Push the promoted direction until remaining public gains are small, need a new
@@ -119,6 +126,14 @@ At task-appropriate depth:
   Guardrail measurements;
 - verify runtime, schema, resources, parameter freeze, and reproducibility;
 - document failures, boundaries, tradeoffs, and claims not to overstate.
+
+Before final Candidate Check or formal Evaluation, add a separate `Maximization
+Confirmation` subsection to Notebook Chapter 3 after the process notes.
+Explicitly confirm that the selected direction has been polished and pushed to
+its plausible limit and explain the reasons fully from the recorded evidence.
+If you cannot yet make that confirmation, say why and continue maximizing and
+hardening in Phase 2. Do not run the final Check or `./explore eval` before the
+confirmation and rationale are written.
 
 Make the true result reviewable: connect important problem, prior bottleneck,
 mechanism, isolating evidence, competitive change, contribution, boundaries,

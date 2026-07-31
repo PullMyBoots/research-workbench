@@ -27,20 +27,44 @@ how to search.
 
 ## 2. Broad Exploration Log
 
-Written by Builder. Record the materially different directions explored, where
-they came from, public experiments and result paths, negative evidence,
-comparisons, and why one direction was promoted. The trail must let an Auditor
-understand rejected alternatives and distinguish a real mechanism from a lucky
-score, parameter sweep or wrapper change.
+Written by Builder in two parts.
+
+### Process Notes
+
+Record the materially different directions explored, where they came from,
+public experiments and result paths, discoveries, decisions, reflection,
+negative evidence, comparisons, and why one direction appears most valuable.
+The trail must let an Auditor understand rejected alternatives and distinguish
+a real mechanism from a lucky score, parameter sweep or wrapper change.
+
+### Broad Exploration Confirmation
+
+Explicitly confirm whether broad exploration has found the most valuable
+breakthrough direction, and explain the reasons fully from the process notes and
+evidence. If it cannot yet be confirmed, say why and continue broad exploration.
+Enter Chapter 3 only after this confirmation and its rationale are written.
 
 ## 3. Convergence, Build, And Submission Log
 
-Written by Builder. Record how the promoted direction was implemented,
-mechanized, maximized and hardened; the decisive comparisons, ablations,
-sensitivity or boundary checks; priority-metric behavior; Guardrail costs,
-tradeoffs and remaining uncertainty; reproducibility and review artifacts; and
-the final Candidate Check and formal submission identity. Include enough code,
-command and result locators to reconstruct the submitted work.
+Written by Builder in two parts before final Check and submission.
+
+### Process Notes
+
+Record how the promoted direction was implemented, mechanized, maximized and
+hardened; the discoveries, decisions and reflection along the way; decisive
+comparisons, ablations, sensitivity or boundary checks; priority-metric
+behavior, Guardrail costs, tradeoffs and remaining uncertainty; and
+reproducibility and review artifacts.
+
+### Maximization Confirmation
+
+Explicitly confirm whether the selected direction has been polished and pushed
+to its plausible limit, and explain the reasons fully from the process notes and
+evidence. If it cannot yet be confirmed, say why and continue maximizing and
+hardening the direction. Run the final Candidate Check and formal submission
+only after this confirmation and its rationale are written. Then record their
+identities with enough code, command and result locators to reconstruct the
+submitted work.
 
 Do not begin this chapter merely because broad exploration is lengthy. Until a
 materially changed direction earns promotion with meaningful public evidence,
