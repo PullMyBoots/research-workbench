@@ -49,7 +49,6 @@ TEAM_SUBPROJECTS_DIR = "subprojects-team"
 AGENT_NAME_RE = re.compile(r"agent[A-Za-z0-9_-]*\Z")
 SAFE_ID_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 VERSION_RE = re.compile(r"version-[A-Za-z0-9_.-]+\Z")
-PENDING_HANDOFF_FILE = ".handoff-pending.json"
 ROUTE_CLI_PROTOCOL = 9
 ROUTE_CLI_PROTOCOL_MARKER = f"explore-cli-protocol: {ROUTE_CLI_PROTOCOL}"
 DEFAULT_ATTACHED_WAIT_TIMEOUT_SECONDS = 1500.0
@@ -926,6 +925,17 @@ def topic_required_paths(topic: Path) -> list[Path]:
         topic / TOPIC_MARKER / "memory" / "logs",
         topic / TOPIC_MARKER / "integration",
         topic / TOPIC_MARKER / "log",
+        topic / "subprojects-main",
+        topic / "subprojects-single",
+        topic / "subprojects-single" / ".single-agent-template" / "AGENTS.md",
+        topic / "subprojects-single" / ".single-agent-template" / ".ResearchProject" / "memory" / "main.md",
+        topic / "subprojects-single" / ".single-agent-template" / ".ResearchProject" / "memory" / "logs",
+        topic / "subprojects-single" / ".single-agent-template" / ".ResearchProject" / "knowledge" / "README.md",
+        topic / "subprojects-single" / ".single-agent-template" / ".ResearchProject" / "knowledge" / "items",
+        topic / "subprojects-single" / ".single-agent-template" / ".ResearchProject" / "knowledge" / "items.json",
+        topic / "subprojects-single" / ".single-agent-template" / ".ResearchProject" / "knowledge" / "topics.json",
+        topic / ".agents" / "skills" / "create-single-agent-project" / "SKILL.md",
+        topic / ".agents" / "skills" / "create-single-agent-project" / "scripts" / "create_single_agent_project.py",
         topic / TEAM_SUBPROJECTS_DIR,
         topic / ".discovery" / "problem-template" / "problem.json",
     ]
@@ -1858,16 +1868,17 @@ def build_dashboard_agent_statuses(workspace: Path, agents: list[str], *, includ
             runner_action = "wait_eval"
             goal_file = None
             should_start_codex = False
+        elif eval_status in {"main_review", "failed"}:
+            completed_stage = "builder"
+            waiting_for = "Human/Main"
+            status_label = "Main review required"
+            status_detail = str(last_error)
+            runner_action = "wait_main"
+            goal_file = None
+            should_start_codex = False
         elif eval_status == "check_failed":
             completed_stage = "none"
             waiting_for = "Builder repair"
-            status_label = "Needs attention"
-            status_detail = str(last_error)
-            runner_action = "start_debug"
-            goal_file = "headless_goals/route_debug_eval.md"
-        elif eval_status == "failed" or last_error:
-            completed_stage = "builder"
-            waiting_for = "Debug"
             status_label = "Needs attention"
             status_detail = str(last_error)
             runner_action = "start_debug"
@@ -2191,7 +2202,7 @@ def headless_campaign_progress(campaign: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def observe_campaign_version(campaign: dict[str, Any], last_version: Any) -> bool:
+def observe_campaign_reflection(campaign: dict[str, Any], last_version: Any) -> bool:
     version = str(last_version or "")
     if not version or version == str(campaign.get("current_version") or ""):
         return False
@@ -2454,8 +2465,8 @@ def launch_dashboard_headless_campaign(
         "target_iterations": target_iterations,
         "completed_iterations": 0,
         "completed_versions": [],
-        "start_version": loop_state.get("last_version"),
-        "current_version": loop_state.get("last_version"),
+        "start_version": loop_state.get("last_reflected_version"),
+        "current_version": loop_state.get("last_reflected_version"),
         "current_stage": status.get("runner_action"),
         "active_run_id": None,
         "last_processed_run_id": None,
@@ -3422,7 +3433,14 @@ def serve_dashboard(workspace: Path, host: str, port: int, refresh_seconds: floa
             if not dashboard_cookie_authorized(self.headers.get("Cookie", ""), session_token):
                 self.send_error(403, "dashboard session required")
                 return
-            request_workspace = resolve_problem_workspace(topic, workspace, str((query.get("problem") or [""])[0]))
+            try:
+                request_workspace = resolve_problem_workspace(topic, workspace, str((query.get("problem") or [""])[0]))
+            except SystemExit as exc:
+                if path.startswith("/api/"):
+                    self.send_json({"ok": False, "error": str(exc)}, status=400, send_body=send_body)
+                else:
+                    self.send_error(400, str(exc))
+                return
             if path in {"/", "/index.html"}:
                 self.send_text(DASHBOARD_HTML, "text/html; charset=utf-8", send_body=send_body)
             elif path == "/dashboard.css":
@@ -3880,6 +3898,7 @@ body {
 
 .campaign-stage-done { background: #dff6e8; color: #12653b; }
 .campaign-stage-active { background: #dbeafe; color: #1d4ed8; font-weight: 700; }
+.campaign-stage-error { background: #fee2e2; color: #991b1b; }
 .campaign-stage-arrow { color: #94a3b8; }
 
 .campaign-progress-track {
@@ -4894,7 +4913,15 @@ function currentRouteProgress(status) {
       {label: "Evaluation", state: "active"},
     ]};
   }
-  if (["failed", "check_failed"].includes(evalStatus)) {
+  if (["main_review", "failed"].includes(evalStatus)) {
+    return {stages: [
+      {label: "Auditor", state: "done"},
+      {label: "Builder", state: "done"},
+      {label: "Evaluation", state: "error"},
+      {label: "Main review", state: "active"},
+    ]};
+  }
+  if (evalStatus === "check_failed") {
     return {stages: [
       {label: "Auditor", state: "done"},
       {label: "Builder", state: "done"},
@@ -6460,11 +6487,13 @@ def cmd_eval(workspace: Path, cwd: Path, args: argparse.Namespace, *, emit: bool
         raise SystemExit("formal eval can be submitted only when loop_state phase is work_loop")
     if state.get("eval_status") in {"queued", "running"}:
         raise SystemExit(f"formal eval already {state.get('eval_status')}; wait for the active job to finish")
+    failure_stage = "formal_eval"
     try:
         contract = load_evaluation_contract(workspace, require_configured=True)
         registry = load_evaluation_registry(workspace, require_configured=True)
         validate_evaluation_pair(workspace, contract, registry)
         enforce_validation_information_budget(workspace, agent_dir.name, contract)
+        failure_stage = "check"
         candidate = resolve_candidate(agent_dir, str(args.candidate))
         validate_candidate_for_contract(candidate, contract)
         check_info = run_registered_candidate_check(workspace, agent_dir, candidate, contract)
@@ -6511,10 +6540,10 @@ def cmd_eval(workspace: Path, cwd: Path, args: argparse.Namespace, *, emit: bool
             raise SystemExit(shell_exit_code(exc.returncode)) from None
         raise SystemExit(str(exc)) from None
     except SystemExit as exc:
-        record_eval_failure(agent_dir, exc, stage="check")
+        record_eval_failure(agent_dir, exc, stage=failure_stage)
         raise
     except Exception as exc:
-        record_eval_failure(agent_dir, exc, stage="check")
+        record_eval_failure(agent_dir, exc, stage=failure_stage)
         raise SystemExit(str(exc)) from None
 
 
@@ -7164,10 +7193,12 @@ def record_eval_failure(agent_dir: Path, error: BaseException, stage: str = "eva
         code = error.returncode
     else:
         code = error.code if isinstance(error, SystemExit) and isinstance(error.code, int) else None
+    if stage == "check" and active_eval is None and isinstance(error, EvalCommandFailed):
+        active_eval = {"job": Path(error.log).stem, "log": error.log, "status": "failed"}
     set_loop_state(
         agent_dir,
         "work_loop",
-        eval_status="check_failed" if stage == "check" else "failed",
+        eval_status="check_failed" if stage == "check" else "main_review",
         active_eval=active_eval,
         last_error={"stage": stage, "message": message, "exit_code": code, "at": now()},
     )
@@ -7722,8 +7753,6 @@ def knowledge_item_add(workspace: Path, root: Path, args: argparse.Namespace) ->
     existing_in_place = source == final_dir.resolve()
     if existing_in_place and not final_dir.is_dir():
         raise SystemExit("an in-place Item source must be an existing directory")
-    if existing_in_place and (final_dir / PENDING_HANDOFF_FILE).exists():
-        raise SystemExit("handoff Item is still pending; save the complete Web result and remove .handoff-pending.json first")
     if (final_dir.exists() and not existing_in_place) or temp_dir.exists():
         raise SystemExit(f"knowledge item directory already exists: {item_id}")
     try:
@@ -8038,19 +8067,13 @@ def knowledge_integrity_report(workspace: Path, root: Path | None = None) -> dic
             if item_id not in item_ids:
                 issues.append({"kind": "topic_missing_item", "topic": topic_id, "item": item_id})
     content_dirs = {path.name for path in (root / "items").iterdir() if path.is_dir() and not path.name.startswith(".")} if (root / "items").exists() else set()
-    pending_dirs = {
-        item_id
-        for item_id in content_dirs - item_ids
-        if is_topic_knowledge and (root / "items" / item_id / PENDING_HANDOFF_FILE).is_file()
-    }
-    orphan_dirs = sorted(content_dirs - item_ids - pending_dirs)
+    orphan_dirs = sorted(content_dirs - item_ids)
     if orphan_dirs:
         issues.append({"kind": "orphan_item_content", "items": orphan_dirs})
     return {
         "ok": not issues,
         "items": len(item_ids),
         "topics": len(topic_ids),
-        "pending_handoffs": len(pending_dirs),
         "issues": issues,
     }
 
@@ -8089,7 +8112,7 @@ def memory_versions_integrity_report(
             issues.append({"kind": "missing_main_memory", "path": str(memory_path)})
         if main_memory:
             lines = main_memory.splitlines()
-            required = ["# Main Agent Memory", "## 当前项目", "## 项目进度", "## 用户偏好"]
+            required = ["# Main Agent Memory", "## 目标与背景", "## 元认知", "## 当前进展与文件索引"]
             positions = [lines.index(heading) if lines.count(heading) == 1 else -1 for heading in required]
             if len(lines) > 200 or positions[0] != 0 or any(position < 0 for position in positions) or positions != sorted(positions):
                 issues.append({"kind": "invalid_main_memory_structure", "path": str(memory_path)})
@@ -10060,7 +10083,7 @@ def cmd_headless_campaign(workspace: Path, campaign_id: str, *, poll_seconds: fl
             agent = str(campaign.get("agent") or "")
             agent_dir = require_under(workspace / agent, workspace, "campaign Route workspace")
             loop_state = read_json(agent_dir / ".discovery" / "loop_state.json", {})
-            if observe_campaign_version(campaign, loop_state.get("last_version")):
+            if observe_campaign_reflection(campaign, loop_state.get("last_reflected_version")):
                 update_headless_campaign(
                     workspace,
                     campaign_id,
@@ -10080,7 +10103,7 @@ def cmd_headless_campaign(workspace: Path, campaign_id: str, *, poll_seconds: fl
                             "status": "done",
                             "current_stage": "complete",
                             "active_run_id": None,
-                            "reason": "target_versions_created",
+                            "reason": "target_iterations_reflected",
                             "finished_at": now(),
                             "updated_at": now(),
                         },
@@ -10223,6 +10246,20 @@ def cmd_headless_campaign(workspace: Path, campaign_id: str, *, poll_seconds: fl
                         )
                         time.sleep(poll_seconds)
                         continue
+                    if completed_run.get("runner_action") == "start_builder" and run_status == "done":
+                        update_headless_campaign(
+                            workspace,
+                            campaign_id,
+                            {
+                                "status": "blocked",
+                                "reason": "builder_handoff_without_candidate",
+                                "last_processed_run_id": active_run_id,
+                                "active_run_id": None,
+                                "finished_at": now(),
+                                "updated_at": now(),
+                            },
+                        )
+                        return
                     previous_attempts = int(campaign.get("no_progress_attempts") or 0)
                     attempts = previous_attempts + 1
                     max_attempts = int(campaign.get("max_no_progress_attempts") or 1)
@@ -10280,6 +10317,19 @@ def cmd_headless_campaign(workspace: Path, campaign_id: str, *, poll_seconds: fl
                 update_headless_campaign(workspace, campaign_id, {"current_stage": "wait_eval", "updated_at": now()})
                 time.sleep(poll_seconds)
                 continue
+            if action == "wait_main":
+                update_headless_campaign(
+                    workspace,
+                    campaign_id,
+                    {
+                        "status": "blocked",
+                        "reason": "main_review_required",
+                        "current_stage": "wait_main",
+                        "finished_at": now(),
+                        "updated_at": now(),
+                    },
+                )
+                return
             if not route_status.get("should_start_codex"):
                 update_headless_campaign(
                     workspace,

@@ -1,6 +1,6 @@
 # Discovery Goal: Route Debug Eval
 
-You are repairing a failed formal eval for this search-route workspace.
+You are repairing a Candidate path rejected by the public lightweight Check.
 
 Use:
 
@@ -12,11 +12,10 @@ Use:
 
 ## 背景与任务描述
 
-Repair the failed formal-eval submission path and resubmit the same candidate
-for queued formal eval:
+Repair the failed submission path and resubmit the same Candidate:
 
 ```text
-formal eval failed -> inspect error/log -> repair candidate or interface -> eval check passes -> formal eval queued again
+check failed -> inspect public log -> repair candidate or interface -> check passes -> formal eval queued
 ```
 
 The only successful completion marker is:
@@ -41,20 +40,18 @@ Read the required files, then run:
 ```
 
 Confirm that `.discovery/loop_state.json` says `phase: work_loop` and
-`eval_status: failed` or `eval_status: check_failed`. If eval is `queued` or
-`running`, stop and report the active job id. If phase is `reflection_loop`, stop
-and tell the human to use the Auditor goal.
+`eval_status: check_failed`. If eval is queued/running, in `main_review`, or
+phase is `reflection_loop`, report the mismatch and stop.
 
-Inspect `last_error`, `active_eval`, the job status, and the job log:
+Inspect `last_error` and its public Check job/log:
 
 ```bash
 ./explore context --job <job-id>
 ```
 
-Use the job id from `active_eval.job` when present. Formal evaluator details are
-private; if public status is insufficient, ask Human/Main Agent to inspect the
-private diagnostics. If there is no active eval job because the lightweight
-Check failed, inspect the public Check log.
+Use the Check job id/log from `active_eval` and `last_error`. Formal evaluator
+failures and private diagnostics are Human/Main-owned and are not a Debug Eval
+trigger.
 
 ### Repair Scope
 
@@ -63,7 +60,7 @@ Default to engineering repair, not a new research pivot. Appropriate work:
 - fix candidate imports, dependencies, file paths, permissions, or stale output;
 - fix Candidate packaging, entry point, imports or behavior required by the
   public Check and Candidate API;
-- fix candidate interface assumptions exposed by the formal job;
+- fix candidate interface assumptions exposed by the public Check;
 - fix resource-contract mismatches by making the Candidate entry point consume
   `DISCOVERY_CPUS`, `DISCOVERY_MEMORY_GB`, `DISCOVERY_GPUS`, and
   `CUDA_VISIBLE_DEVICES`;
@@ -80,10 +77,10 @@ candidate is structurally invalid and cannot be repaired.
 
 This Goal succeeds only when every item below is true:
 
-1. The failure cause is diagnosed from reproducible evidence in the check or
-   formal-job logs, not guessed from symptoms.
-2. The repair preserves the same Candidate contract, metric contract,
-   and evaluator unless the evidence proves that interface repair is required.
+1. The failure cause is diagnosed from reproducible public Check evidence, not
+   guessed from symptoms.
+2. The repair preserves the Candidate, metric, and evaluator contracts. If a
+   contract or evaluator change is required, stop and hand it to Human/Main.
 3. The Problem-owned lightweight Check accepts the packaged Candidate.
 4. `./explore eval` returns a new queued formal-eval job id.
 5. `notebook.md` records the failure, evidence, repair, verification command,

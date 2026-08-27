@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Single-Agent Project"
+  short_description: "Initialize a minimal single-agent research workbench"
+  default_prompt: "Use $create-single-agent-project to initialize a named single-agent research project with its goal."

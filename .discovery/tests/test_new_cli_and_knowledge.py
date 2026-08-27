@@ -46,7 +46,7 @@ class KnowledgeLifecycleTests(unittest.TestCase):
         DISCOVERY.write_json(self.root / "items.json", {})
         DISCOVERY.write_json(self.root / "topics.json", {})
         DISCOVERY.main_memory_path(self.topic_root).parent.mkdir(parents=True)
-        DISCOVERY.main_memory_path(self.topic_root).write_text("# Main Agent Memory\n\n## 当前项目\n\nfixture\n\n## 项目进度\n\nfixture\n\n## 用户偏好\n\nfixture\n", encoding="utf-8")
+        DISCOVERY.main_memory_path(self.topic_root).write_text("# Main Agent Memory\n\n## 目标与背景\n\nfixture\n\n## 元认知\n\nfixture\n\n## 当前进展与文件索引\n\nfixture\n", encoding="utf-8")
         self.source = self.agent / "paper.txt"
         self.source.write_text("stable research source", encoding="utf-8")
 
@@ -348,7 +348,7 @@ class MaintainCliTests(unittest.TestCase):
             DISCOVERY.write_json(root / "topics.json", {})
         memory_path = DISCOVERY.main_memory_path(self.topic_knowledge)
         memory_path.parent.mkdir(parents=True)
-        memory_path.write_text("# Main Agent Memory\n\n## 当前项目\n\nfixture\n\n## 项目进度\n\nfixture\n\n## 用户偏好\n\nfixture\n", encoding="utf-8")
+        memory_path.write_text("# Main Agent Memory\n\n## 目标与背景\n\nfixture\n\n## 元认知\n\nfixture\n\n## 当前进展与文件索引\n\nfixture\n", encoding="utf-8")
         DISCOVERY.write_json(
             self.topic / ".DiscoveryProgram" / "problem_registry.json",
             {"schema_version": 1, "default_problem": "problem-a", "problems": [{"id": "problem-a", "path": "subprojects-team/problem-a"}]},
@@ -380,20 +380,6 @@ class MaintainCliTests(unittest.TestCase):
         deleted = self.run_cli("maintain", "item", "delete", "--scope", "topic", "--id", "paper-a")
         self.assertEqual(deleted.returncode, 0, deleted.stderr)
         self.assertFalse((self.topic_knowledge / "items" / "paper-a").exists())
-
-    def test_pending_handoff_is_registered_only_after_human_result(self) -> None:
-        item_dir = self.topic_knowledge / "items" / "handoff-a"
-        item_dir.mkdir()
-        DISCOVERY.write_json(item_dir / DISCOVERY.PENDING_HANDOFF_FILE, {"recipient": "Deep Research"})
-        (item_dir / "question.md").write_text("research question", encoding="utf-8")
-        blocked = self.run_cli("maintain", "item", "add", "--scope", "topic", "--id", "handoff-a", "--source", str(item_dir), "--metadata", str(self.metadata))
-        self.assertNotEqual(blocked.returncode, 0)
-        self.assertIn("still pending", blocked.stderr)
-        (item_dir / DISCOVERY.PENDING_HANDOFF_FILE).unlink()
-        (item_dir / "result.md").write_text("complete web result", encoding="utf-8")
-        completed = self.run_cli("maintain", "item", "add", "--scope", "topic", "--id", "handoff-a", "--source", str(item_dir), "--metadata", str(self.metadata))
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("handoff-a", DISCOVERY.read_json(self.topic_knowledge / "items.json", {}))
 
     def test_memory_log_and_version_anchored_notice_are_separate(self) -> None:
         memory_file = self.topic / "memory.json"
@@ -428,14 +414,6 @@ class MaintainCliTests(unittest.TestCase):
         self.assertNotEqual(blocked_delete.returncode, 0)
         self.assertIn("not stationary", blocked_delete.stderr)
 
-    def test_check_accepts_marked_pending_topic_handoff(self) -> None:
-        item_dir = self.topic_knowledge / "items" / "pending-a"
-        item_dir.mkdir()
-        DISCOVERY.write_json(item_dir / DISCOVERY.PENDING_HANDOFF_FILE, {"recipient": "Pro"})
-        checked = self.run_cli("maintain", "check")
-        self.assertEqual(checked.returncode, 0, checked.stderr)
-        self.assertTrue(json.loads(checked.stdout)["ok"])
-
     def test_check_rejects_notice_without_publication_anchor(self) -> None:
         DISCOVERY.append_jsonl(
             self.problem / ".DiscoveryConsole" / "pub" / "notices.jsonl",
@@ -454,11 +432,11 @@ class MaintainCliTests(unittest.TestCase):
 
     def test_check_rejects_invalid_main_memory_and_memory_reference(self) -> None:
         memory_path = DISCOVERY.main_memory_path(self.topic_knowledge)
-        memory_path.write_text("# Main Agent Memory\n\n## 当前项目\n\nfixture\n\n## 用户偏好\n\nfixture\n", encoding="utf-8")
+        memory_path.write_text("# Main Agent Memory\n\n## 目标与背景\n\nfixture\n\n## 当前进展与文件索引\n\nfixture\n", encoding="utf-8")
         checked = self.run_cli("maintain", "check")
         self.assertNotEqual(checked.returncode, 0)
         self.assertIn("invalid_main_memory_structure", checked.stdout)
-        memory_path.write_text("# Main Agent Memory\n\n## 当前项目\n\nfixture\n\n## 项目进度\n\n@memory:missing\n\n## 用户偏好\n\nfixture\n", encoding="utf-8")
+        memory_path.write_text("# Main Agent Memory\n\n## 目标与背景\n\nfixture\n\n## 元认知\n\nfixture\n\n## 当前进展与文件索引\n\n@memory:missing\n", encoding="utf-8")
         checked = self.run_cli("maintain", "check")
         self.assertNotEqual(checked.returncode, 0)
         self.assertIn("unresolved_reference", checked.stdout)
@@ -505,7 +483,6 @@ class NewCliSurfaceTests(unittest.TestCase):
         prompt_files = [
             topic / "AGENTS.md",
             topic / ".agents" / "skills" / "maintain-discovery" / "SKILL.md",
-            topic / ".agents" / "skills" / "chatgpt-handoff" / "SKILL.md",
             topic / ".agents" / "skills" / "create-exploration-problem" / "SKILL.md",
             topic / ".discovery" / "agents-template" / "AGENTS.md",
             topic / ".discovery" / "agents-template" / "notebook.md",
@@ -680,7 +657,7 @@ class NewCliSurfaceTests(unittest.TestCase):
                 DISCOVERY.write_json(owner / "topics.json", {})
             memory_path = DISCOVERY.main_memory_path(topic_knowledge)
             memory_path.parent.mkdir(parents=True)
-            memory_path.write_text("# Main Agent Memory\n\n## 当前项目\n\nfixture\n\n## 项目进度\n\nfixture\n\n## 用户偏好\n\nfixture\n", encoding="utf-8")
+            memory_path.write_text("# Main Agent Memory\n\n## 目标与背景\n\nfixture\n\n## 元认知\n\nfixture\n\n## 当前进展与文件索引\n\nfixture\n", encoding="utf-8")
             args = argparse.Namespace(problem="", host="127.0.0.1", port=8765, no_browser=True)
             with mock.patch.object(DISCOVERY, "required_paths", return_value=[]), mock.patch.object(
                 DISCOVERY, "topic_required_paths", return_value=[]

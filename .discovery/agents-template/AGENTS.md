@@ -27,16 +27,17 @@ Each route has one active role:
   the lightweight check, and queues formal eval.
 - Auditor: after successful formal eval, independently audits evidence, extracts
   knowledge, and writes the next target brief.
-- Debug Eval: after `failed` or `check_failed`, repairs and resubmits the same
-  candidate path.
+- Debug Eval: after `check_failed`, repairs and resubmits the same candidate
+  path. Formal-evaluator failures return to Human/Main review.
 
 ```text
 work_loop -> eval check -> formal eval queued/running -> reflection_loop -> work_loop
-failed/check_failed -> debug eval -> eval check -> formal eval queued
+check_failed -> debug eval -> eval check -> formal eval queued
+formal-eval failure -> Human/Main review
 ```
 
 Use Builder in `work_loop` with no queued/running eval; Debug Eval in
-`work_loop` with `failed/check_failed`; Auditor only in `reflection_loop` after
+`work_loop` with `check_failed`; Auditor only in `reflection_loop` after
 a worker-created practice version. Run one role only. Never edit
 `.discovery/loop_state.json` to jump phases.
 
@@ -94,7 +95,8 @@ Candidate-to-report path.
 Do not supply or create formal metrics/reports, choose evaluation space, change
 the evaluator/contract, or use formal eval as a tuning loop. After
 `./explore eval` returns a queued job id, record it and stop; the worker owns
-execution and transition.
+execution and transition. A private evaluator/report failure is Main-owned; a
+Route repairs only failures supported by its public Check evidence.
 
 ## Evaluation Channels
 
@@ -201,7 +203,8 @@ formal Evaluation. The other is an evidence-bounded no-Candidate handoff: if
 materially different attempts exhaust the assigned evidence or resource
 boundary, record the tested hypotheses, negative evidence, remaining
 uncertainty, and the decision needed from Main, then stop without creating a
-Version. A phase mismatch, active
+Version. Headless Runtime treats a clean Builder exit with no state change as
+this handoff instead of repeating the search. A phase mismatch, active
 Evaluation, infrastructure failure, long-Job handoff, or Human pause also ends
 the current Turn without claiming Builder success.
 
@@ -221,7 +224,8 @@ Candidate. Never resubmit the effective incumbent to close a loop.
 Auditor is an independent third-party expert, not a score summarizer, route
 advocate, or next-method designer.
 
-1. Inspect the current README, all current Notices, formal report, feedback,
+1. Inspect the current README, all current Notices, published Version metrics
+   and released feedback,
    snapshot/diff, logs, Builder notebook, public results, optional baselines,
    practice and knowledge. README supplies the complete subproblem description;
    Notices tell you what later review found or changed. Use both for their own
@@ -290,7 +294,9 @@ decision-relevant external source lead with its title, URL/path, intended use,
 and evidence limits in the work trail; Main Agent governs external Items and
 Knowledge Topics. Each durable Route lesson lives in its evaluated Version and
 states the claim, reproduction path, conditions, failure boundary, uncertainty,
-provenance, and transfer value.
+provenance, and transfer value. Required results must be Git-tracked in the
+frozen Version or use an immutable public artifact locator with a digest;
+ignored working paths are not durable evidence.
 
 ## Main Agent Notices And Notebook
 
@@ -303,7 +309,7 @@ inconsistent, report the synchronization error; do not rank one above the other.
 
 `notebook.md` is one iteration's current target and complete experimental
 record. Its four low-schema chapters are Auditor Target Brief, Broad Exploration,
-Convergence/Build/Submission, and optional Evaluation Failure/Debug. Keep those
+Convergence/Build/Submission, and optional Check Failure/Debug. Keep those
 boundaries but use whatever internal structure best explains the research;
 low-schema means freedom of presentation, never a short or shallow log. Record
 enough commands, paths, observations, failures, comparisons, reasoning, and
@@ -354,9 +360,10 @@ boundary" language as historical warnings against imitation, not binding rules.
 - In TUI, a detached handoff returns input to Human and never closes/replaces
   the TUI. In Headless, Runtime starts a fresh same-role Thread only after all
   associated Jobs are terminal. Role changes are always fresh Threads.
-- Before submitting non-trivial work, ensure the current four-chapter Notebook
-  has enough command, locator, code-state, expected-output, verification, and
-  failure-boundary detail to resume safely. A completed Job is not a completed
+- Before submitting non-trivial work, ensure the role-owned record (Builder or
+  Debug Notebook chapter; Auditor reflection draft) has enough command,
+  locator, code-state, expected-output, verification, and failure-boundary
+  detail to resume safely. A completed Job is not a completed
   Builder/Auditor/Debug-Eval stage.
 - Execute only the scheduled role; do not mix entrypoints or invent lifecycle
   behavior.

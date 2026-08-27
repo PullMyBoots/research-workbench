@@ -127,6 +127,27 @@ class KnowledgeQueryTests(unittest.TestCase):
         self.assertIsNone(metric["value"])
         self.assertFalse(shown["card"]["cohort"]["comparable"])
 
+    def test_version_metric_cards_are_nested_by_metric_name(self) -> None:
+        for index, value in enumerate((0.7, 0.8), start=1):
+            (self.root / "versions" / f"version-agent1-000{index}.json").write_text(
+                json.dumps({
+                    "id": f"version-agent1-000{index}",
+                    "agent": "agent1",
+                    "summary": "Version evidence",
+                    "metrics": {"quality": value},
+                    "metric_directions": {"quality": "higher"},
+                    "contract_digest": "digest",
+                    "evidence_space": "validation",
+                }),
+                encoding="utf-8",
+            )
+        contract = {"contract_digest": "digest", "evidence_level": "L2", "metrics": {"quality": {"direction": "higher"}}}
+        shown = QUERY.show(root=self.root, scope_kind="problem", scope_id="p", ref="@version:version-agent1-0002", contract=contract)
+        metric = shown["card"]["metric_cards"]["quality"]
+        self.assertEqual(metric["value"], 0.8)
+        self.assertAlmostEqual(metric["raw_delta"], 0.1)
+        self.assertNotIn("raw_delta", shown["card"]["metric_cards"])
+
 
 if __name__ == "__main__":
     unittest.main()

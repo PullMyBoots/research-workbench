@@ -25,7 +25,7 @@ Auditor task:
 /goal Follow the instructions in ./goals/route_auditor.md
 ```
 
-Debug failed formal eval task:
+Debug failed Candidate Check task:
 
 ```text
 /goal Follow the instructions in ./goals/route_debug_eval.md
@@ -33,6 +33,6 @@ Debug failed formal eval task:
 
 Use the Builder task when `.discovery/loop_state.json` says `phase: work_loop`
 and no eval is queued/running. Use the debug task when `phase: work_loop` and
-`eval_status: failed` or `check_failed`. Use the Auditor task to complete formal
-reflection after the worker finishes formal eval successfully and moves the
-state to `reflection_loop`.
+`eval_status: check_failed`. Formal-evaluator failures require Human/Main
+review. Use the Auditor task after successful formal eval moves the state to
+`reflection_loop`.

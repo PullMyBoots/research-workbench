@@ -24,16 +24,17 @@ never design the next method.
 Use the shared `attached_wait`/`detached_handoff` protocol for any public
 reproduction or diagnostic. A normal Job result resumes Auditor work only; it
 does not start Builder. On handoff or wait timeout, append a Continuation
-Checkpoint to the current Notebook chapter, then end the Turn without
+Checkpoint to the current `reflection.md` draft, then end the Turn without
 resubmitting the Job.
 
 ### Required Startup
 
 1. Read the controlling files and run `./explore context`.
 2. Confirm `phase: reflection_loop` and real `last_version`. Stop/report if eval
-   is queued/running or `failed/check_failed` requires Debug Eval.
+   is queued/running, `check_failed` requires Debug Eval, or formal Evaluation
+   requires Human/Main review.
 3. Recover `<last_version>` from `./explore context` and identify the submitted
-   snapshot, prior notebook, report, feedback, logs, and results.
+   snapshot, prior notebook, published metrics/feedback, public logs, and results.
 4. Use only public resources, route files, formal feedback, practice, knowledge,
    public-development diagnostics, and Web Search.
 
@@ -51,10 +52,14 @@ Build a complete competitive inventory before narrowing analysis:
 - AI-review dimensions, released scores, and released rationales when enabled;
 - comparable external SOTA, or why protocols prevent comparison.
 
+Use public Version cards for other Routes; their private Git/notebook locators
+are resolvable only by the owning Route and Human/Main.
+
 For the current Version inspect the active Objective, AI Review, or Hybrid
 channels; metric directions/roles and AI-review evidence as applicable;
 README's natural-language interpretation; all current Notices; comparable ranks
-or previous/global bests when defined; snapshot/diff, reports/logs/results; and the full
+or previous/global bests when defined; snapshot/diff, published feedback,
+public logs/results; and the full
 notebook trail: hypotheses, portfolio, failures, promotion, parameters, public
 checks, convergence, story, and readiness claims.
 
@@ -65,7 +70,7 @@ can change the decision; dominated versions remain inventoried but need not
 receive equal compute.
 
 Every material conclusion needs formal evidence, code/log/result paths,
-local `@version`/`@topic`/`@item` references, or a reproducible diagnostic. Run public
+local `@version`/`@baseline`/`@topic`/`@item` references, or a reproducible diagnostic. Run public
 reproductions, ablations, boundary/sensitivity/slice checks as needed; otherwise
 state why existing evidence is sufficient. Diagnose rather than craft a new
 submission.
@@ -168,7 +173,7 @@ Preserve supported successes and failures. Each durable lesson states:
 - evidence and reproduction command/result path;
 - scope/preconditions, failure boundary, uncertainty/counterevidence, and likely
   transfer value;
-- supporting local `@version`, `@topic`, and `@item` references.
+- supporting local `@version`, `@baseline`, `@topic`, and `@item` references.
 
 Keep guesses and one-off luck labeled as hypotheses. The evaluated Version
 stores its supported positive and negative practice. Record consequential

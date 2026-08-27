@@ -225,12 +225,12 @@ class HeadlessModelConfigTests(unittest.TestCase):
         self.assertEqual(best["metric_sources"]["schema"]["methods"], ["a", "b", "c"])
         self.assertIn("a, b, c", best["metric_validity"]["schema"]["reason"])
 
-    def test_campaign_counts_each_new_version_once(self) -> None:
+    def test_campaign_counts_each_new_reflected_version_once(self) -> None:
         campaign = {"current_version": "version-agent1-0001", "completed_versions": [], "completed_iterations": 0}
-        self.assertFalse(DISCOVERY.observe_campaign_version(campaign, "version-agent1-0001"))
-        self.assertTrue(DISCOVERY.observe_campaign_version(campaign, "version-agent1-0002"))
-        self.assertFalse(DISCOVERY.observe_campaign_version(campaign, "version-agent1-0002"))
-        self.assertTrue(DISCOVERY.observe_campaign_version(campaign, "version-agent1-0003"))
+        self.assertFalse(DISCOVERY.observe_campaign_reflection(campaign, "version-agent1-0001"))
+        self.assertTrue(DISCOVERY.observe_campaign_reflection(campaign, "version-agent1-0002"))
+        self.assertFalse(DISCOVERY.observe_campaign_reflection(campaign, "version-agent1-0002"))
+        self.assertTrue(DISCOVERY.observe_campaign_reflection(campaign, "version-agent1-0003"))
         self.assertEqual(campaign["completed_iterations"], 2)
         self.assertEqual(campaign["completed_versions"], ["version-agent1-0002", "version-agent1-0003"])
 
@@ -401,6 +401,26 @@ class DashboardActivityStateTests(unittest.TestCase):
         self.assertTrue(state["should_start_codex"])
         self.assertIn("Previous Campaign stopped", state["status_detail"])
         self.assertIn("headless_stage_made_no_state_progress", state["status_detail"])
+
+    def test_private_formal_eval_failure_waits_for_main_instead_of_debug(self) -> None:
+        DISCOVERY.write_json(
+            self.agent / ".discovery" / "loop_state.json",
+            {"phase": "work_loop", "eval_status": "main_review", "active_eval": {"job": "eval-a"}, "last_error": {"stage": "formal_eval"}},
+        )
+        state = self.status()
+        self.assertEqual(state["runner_action"], "wait_main")
+        self.assertEqual(state["status_label"], "Main review required")
+        self.assertFalse(state["should_start_codex"])
+
+    def test_public_check_failure_preserves_debug_job_locator(self) -> None:
+        DISCOVERY.record_eval_failure(
+            self.agent,
+            DISCOVERY.EvalCommandFailed(2, ".DiscoveryConsole/pub/log/eval-check-123.log"),
+            stage="check",
+        )
+        state = DISCOVERY.read_json(self.agent / ".discovery" / "loop_state.json", {})
+        self.assertEqual(state["eval_status"], "check_failed")
+        self.assertEqual(state["active_eval"]["job"], "eval-check-123")
 
     def test_version_slider_does_not_render_variable_length_summary(self) -> None:
         self.assertIn('data-agent-version=', DISCOVERY.DASHBOARD_JS)

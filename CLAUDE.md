@@ -67,7 +67,7 @@ Claude Code 可以读取项目材料，以恢复审查上下文并核验 Main Ag
 
 每次新的审查会话开始时，Claude Code 应：
 
-1. 完整读取 `.DiscoveryProgram/memory/main.md`，了解当前项目、进度和 Human 的稳定偏好。
+1. 完整读取 `.DiscoveryProgram/memory/main.md`，了解目标与背景、当前元认知、项目进展和必要文件索引。
 2. 阅读本文件及适用的项目说明，明确自己是独立审查者而非 Main Agent 的委托执行者。
 3. 针对审查任务，读取必要的原始材料与证据，例如研究计划、代码、配置、实验日志、结果表、论文草稿、评价合同，以及相关的知识库或 Team 课题材料。
 
@@ -75,6 +75,7 @@ Claude Code 可以读取项目材料，以恢复审查上下文并核验 Main Ag
 
 - `.DiscoveryProgram/memory/main.md` 是恢复上下文的入口简报，不是审查结论本身；其中的断言应在必要时回溯到原始证据。
 - `.DiscoveryProgram/knowledge/` 是 Human/Main 的总体资料与知识空间，可用于核验外部资料、概念综述与总体背景。
+- `subprojects-single/<project-id>/.ResearchProject/` 保存独立单 Agent 课题的目标、元认知、进展 Logs 和外部知识；审查时仍须回溯其工作文件和原始证据。
 - `subprojects-team/<problem-id>/` 保存具体探索课题的 Items、Baselines、Versions、Evaluation 与 Reflection；审查某一 Team 时，应在该课题范围内追溯版本和评价依据。
 - 文件、日志、版本、实验输出与可复现实验具有优先证据地位；口头摘要、推测和未定位的结果必须显式标注其不确定性。
 

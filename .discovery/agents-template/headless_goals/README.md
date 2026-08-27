@@ -25,7 +25,7 @@ Dashboard/headless Auditor task:
 codex exec Follow the instructions in ./headless_goals/route_auditor.md
 ```
 
-Dashboard/headless debug failed formal eval task:
+Dashboard/headless debug failed Candidate Check task:
 
 ```text
 codex exec Follow the instructions in ./headless_goals/route_debug_eval.md

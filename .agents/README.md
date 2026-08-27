@@ -8,14 +8,15 @@ Main-agent skills:
   inspect its externally sourced or evaluated evidence.
 - `create-exploration-problem`: after Human/Main choose Team search for one
   bounded problem, prepare, validate, bootstrap, and hand off its search space.
+- `create-single-agent-project`: initialize one named long-running single-Agent
+  project with only its Human-provided goal and local research-memory skeleton.
 - `maintain-discovery`: maintain Main-owned external Items and syntheses,
   Topic Main Memory/Memory Logs, and version-anchored Problem Notices.
-- `chatgpt-handoff`: publish a manual Pro/Deep Research consultation and finish
-  its returned result as a Topic external Item.
 
-Main handles direct work without a Team in empty, freely structured
-`subprojects-main/<id>/` folders. Do not invoke `create-exploration-problem`
-merely because a Main subproject exists.
+Main handles direct work in blank, freely structured `subprojects-main/<id>/`
+folders. A long-running independent Project Agent uses
+`create-single-agent-project` and `subprojects-single/<id>/`. Do not invoke
+`create-exploration-problem` merely because either kind of project exists.
 
 Main Agent owns external Items and Knowledge Topics at both Research Topic and
 Problem scope, and writes Topic-only Memory Logs from local and evaluated

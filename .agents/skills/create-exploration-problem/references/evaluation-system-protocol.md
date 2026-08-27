@@ -36,7 +36,7 @@ one Problem
 The Route-facing command is always:
 
 ```bash
-./explore eval -m "<version summary>" --candidate <file-or-directory>
+./explore eval -m "<candidate change brief>" --candidate <file-or-directory>
 ```
 
 The Route cannot pass an eval command, report path, metric values,

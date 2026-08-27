@@ -18,7 +18,7 @@ Document exactly:
 Routes submit only the Candidate:
 
 ```bash
-./explore eval -m "version summary" --candidate <file-or-directory>
+./explore eval -m "candidate change brief" --candidate <file-or-directory>
 ```
 
 They do not provide a scoring command, report, metric definitions, evaluation

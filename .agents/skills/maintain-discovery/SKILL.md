@@ -1,6 +1,6 @@
 ---
 name: maintain-discovery
-description: Maintain Main-owned Discovery state. Use when Main Agent must initialize, add, or remove Topic/Problem external Items and their syntheses; maintain Topic Main Memory or add a Memory Log; add or remove version-anchored Problem Notices; finalize a ChatGPT Pro or Deep Research result as a Topic Item; or verify knowledge integrity after those changes.
+description: Maintain Main-owned Discovery state. Use when Main Agent must initialize, add, or remove Topic/Problem external Items and their syntheses; maintain Topic Main Memory or add a Memory Log; add or remove version-anchored Problem Notices; or verify knowledge integrity after those changes.
 ---
 
 # Maintain Discovery
@@ -51,20 +51,20 @@ Use the public Main-maintenance surface below. It only makes atomic filesystem
 and JSON/JSONL changes; it does not write summaries or syntheses:
 
 ```bash
-discovery maintain item add --scope topic --id <id> \
+./discovery maintain item add --scope topic --id <id> \
   --source <bundle> --metadata <metadata.json>
-discovery maintain item add --scope problem --problem <problem-id> \
+./discovery maintain item add --scope problem --problem <problem-id> \
   --id <id> --source <bundle> --metadata <metadata.json>
-discovery maintain item delete --scope topic --id <id>
-discovery maintain item delete --scope problem --problem <problem-id> --id <id>
+./discovery maintain item delete --scope topic --id <id>
+./discovery maintain item delete --scope problem --problem <problem-id> --id <id>
 
-discovery maintain memory add --id <id> --file <memory-log.json>
+./discovery maintain memory add --id <id> --file <memory-log.json>
 
-discovery maintain notice add --problem <problem-id> --id <id> --file <notice.json>
-discovery maintain notice delete --problem <problem-id> --id <id>
+./discovery maintain notice add --problem <problem-id> --id <id> --file <notice.json>
+./discovery maintain notice delete --problem <problem-id> --id <id>
 
-discovery maintain check
-discovery maintain check --problem <problem-id>
+./discovery maintain check
+./discovery maintain check --problem <problem-id>
 ```
 
 Run maintenance from the Topic root. Add operations never overwrite an existing
@@ -91,9 +91,7 @@ To add an Item:
 2. Assign a stable id. Write metadata JSON containing non-empty `title` and an
    evidence-bearing summary of about 200 words: source identity, relevant
    claims or methods, applicability, and limitations.
-3. Run `item add`. For a handoff bundle already created at the final Topic Item
-   path, pass that path as `--source`; the CLI registers it in place only
-   after the pending marker has been removed.
+3. Run `item add` with the source bundle and its metadata.
 4. Read and directly edit the selected `topics.json`. Integrate the Item into
    one or more existing syntheses, or create a genuinely new synthesis. Write
    connected review prose explaining technical relationships, evidence,
@@ -118,16 +116,21 @@ not a JSON mutation task. The CLI validates the result.
 
 Before every new session, read `.DiscoveryProgram/memory/main.md` completely.
 It is a Main-edited Markdown briefing with exactly the ordered headings
-`当前项目`, `项目进度`, and `用户偏好`, and may not exceed 200 lines. Update
-“当前项目” for project creation or material direction changes; when progress
-changes substantially, first add an immutable Memory Log and then update
-“项目进度”; update “用户偏好” only for explicit, stable Human preferences.
-Before each change, review the Human request and explain the intended update.
+`目标与背景`, `元认知`, and `当前进展与文件索引`, and may not exceed 200
+lines. Update “目标与背景” for project creation, material direction changes,
+or durable Human constraints. When progress changes substantially, first add an
+immutable Memory Log and then update “当前进展与文件索引”. Review “元认知”
+after every new Log, but change it only when practice and experience support a
+high-level judgment that will affect future decisions; retain its scope,
+evidence, failure boundary, and uncertainty. Before each change, review the
+Human request and explain the intended update.
 
 Use `memory add` only with a JSON object containing exactly non-empty `summary`
 and `report`. The CLI adds `id` and UTC `created_at`, atomically creates
 `memory/logs/<id>.json`, and never overwrites or deletes a log. Do not record
-routine commands, small fixes, one-off requests, speculation, or secrets.
+routine commands, small fixes, one-off requests, speculation, or secrets. Use
+`summary` for the concise progress change; use `report` for key data, evidence
+locations, extracted experience, applicability, and limitations.
 
 ## Problem Notices
 
@@ -153,20 +156,6 @@ incident, new metric interpretation or changed research emphasis. Delete a
 temporary Notice when it no longer helps. Never correct a Route by editing its
 Notebook, Version or Reflection, and never turn a textual scientific judgment
 into evaluator pass/fail code.
-
-## ChatGPT Pro and Deep Research Items
-
-Follow `$chatgpt-handoff` for publication. Create the original question and
-handoff package inside a pending Topic Item directory from the start. The Item
-is incomplete and must not appear in `items.json` until Human saves the complete
-Web result into the same directory. Then include the question, published
-package, repository snapshot or commit identity, full result, citations,
-recipient, and dates; remove the pending marker; write the Item summary; run
-`item add --scope topic` with the existing Item directory as `--source`; and
-integrate it into Topic syntheses.
-
-Treat the returned report as external support. Record only locally tested
-conclusions in a Memory Log or formal Version.
 
 ## Delegation
 

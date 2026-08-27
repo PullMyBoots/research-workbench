@@ -756,7 +756,7 @@ class RouteRunLifecycleTests(unittest.TestCase):
         self.assertEqual(campaign["last_route_jobs"], ["run-a"])
         self.assertEqual(campaign["waiting_route_jobs"], [])
 
-    def test_campaign_restarts_one_no_progress_headless_turn_before_blocking(self) -> None:
+    def test_clean_builder_exit_without_state_change_becomes_main_handoff(self) -> None:
         campaign_id = "campaign-a"
         loop_state = DISCOVERY.read_json(self.agent / ".discovery" / "loop_state.json", {})
         DISCOVERY.upsert_headless_run(
@@ -789,19 +789,69 @@ class RouteRunLifecycleTests(unittest.TestCase):
                 "created_at": "2026-01-01T00:00:00+00:00",
             },
         )
-        route_status = {"runner_action": "start_builder", "should_start_codex": True, "goal_file": "headless_goals/route_builder.md"}
+        DISCOVERY.cmd_headless_campaign(self.workspace, campaign_id, poll_seconds=0.01)
+        campaign = DISCOVERY.get_headless_campaign(self.workspace, campaign_id)
+        self.assertEqual(campaign["status"], "blocked")
+        self.assertEqual(campaign["reason"], "builder_handoff_without_candidate")
+
+    def test_campaign_counts_iteration_only_after_final_reflection(self) -> None:
+        campaign_id = "campaign-reflection"
+        DISCOVERY.write_json(
+            self.agent / ".discovery" / "loop_state.json",
+            {
+                "phase": "reflection_loop",
+                "last_version": "version-agent1-0002",
+                "last_reflected_version": "version-agent1-0001",
+                "eval_status": "succeeded",
+                "active_eval": None,
+                "last_error": None,
+            },
+        )
+        DISCOVERY.upsert_headless_campaign(
+            self.workspace,
+            {
+                "id": campaign_id,
+                "agent": "agent1",
+                "status": "running",
+                "target_iterations": 1,
+                "completed_iterations": 0,
+                "completed_versions": [],
+                "current_version": "version-agent1-0001",
+                "active_run_id": None,
+                "last_processed_run_id": None,
+                "waiting_route_jobs": [],
+                "created_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
 
         def stop_after_launch(_seconds: float) -> None:
             DISCOVERY.update_headless_campaign(self.workspace, campaign_id, {"status": "stopped"})
 
+        route_status = {"runner_action": "start_auditor", "should_start_codex": True, "goal_file": "headless_goals/route_auditor.md"}
         with mock.patch.object(DISCOVERY, "build_dashboard_agent_statuses", return_value=[route_status]), mock.patch.object(
-            DISCOVERY, "launch_dashboard_headless_goal", return_value={"run": "headless-b"}
+            DISCOVERY, "launch_dashboard_headless_goal", return_value={"run": "headless-auditor"}
         ) as launch, mock.patch.object(DISCOVERY.time, "sleep", side_effect=stop_after_launch):
             DISCOVERY.cmd_headless_campaign(self.workspace, campaign_id, poll_seconds=0.01)
         launch.assert_called_once()
+        self.assertEqual(DISCOVERY.get_headless_campaign(self.workspace, campaign_id)["completed_iterations"], 0)
+
+        DISCOVERY.write_json(
+            self.agent / ".discovery" / "loop_state.json",
+            {
+                "phase": "work_loop",
+                "last_version": "version-agent1-0002",
+                "last_reflected_version": "version-agent1-0002",
+                "eval_status": None,
+                "active_eval": None,
+                "last_error": None,
+            },
+        )
+        DISCOVERY.update_headless_campaign(self.workspace, campaign_id, {"status": "running", "active_run_id": None})
+        DISCOVERY.cmd_headless_campaign(self.workspace, campaign_id, poll_seconds=0.01)
         campaign = DISCOVERY.get_headless_campaign(self.workspace, campaign_id)
-        self.assertEqual(campaign["no_progress_attempts"], 1)
-        self.assertNotEqual(campaign.get("reason"), "headless_stage_made_no_state_progress")
+        self.assertEqual(campaign["status"], "done")
+        self.assertEqual(campaign["completed_iterations"], 1)
+        self.assertEqual(campaign["reason"], "target_iterations_reflected")
 
     def test_campaign_retries_transient_broker_failure_while_endpoint_is_live(self) -> None:
         campaign_id = "campaign-a"

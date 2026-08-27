@@ -260,7 +260,7 @@ def _version_cards(root: Path, scope_id: str, contract: dict[str, Any], baseline
             value = node.get("metrics", {}).get(metric) if isinstance(node.get("metrics"), dict) else None
             if not isinstance(value, (int, float)):
                 continue
-            metric_card = card.setdefault("metric_cards", {})
+            metric_cards = card.setdefault("metric_cards", {})
             previous = None
             if card["cohort"]["comparable"]:
                 route_cards = [r for r in by_route.get(str(card.get("route") or ""), []) if r["cohort"]["comparable"] and sort_key(r) < sort_key(card)]
@@ -271,7 +271,7 @@ def _version_cards(root: Path, scope_id: str, contract: dict[str, Any], baseline
                         previous = float(candidate); break
             raw_delta = None if previous is None else float(value) - previous
             competitive_rank = 1 + sum((other > float(value) if direction == "higher" else other < float(value)) for other in competitive_values)
-            metric_card.update({"value": float(value), "direction": direction, "team_rank": {"rank": ranks.get(str(card.get("id")), 0), "of": len(values)}, "competitive_rank": {"rank": competitive_rank, "of": len(competitive_values)}, "raw_delta": raw_delta, "gain": None if raw_delta is None else (raw_delta if direction == "higher" else -raw_delta)})
+            metric_cards[metric] = {"value": float(value), "direction": direction, "team_rank": {"rank": ranks.get(str(card.get("id")), 0), "of": len(values)}, "competitive_rank": {"rank": competitive_rank, "of": len(competitive_values)}, "raw_delta": raw_delta, "gain": None if raw_delta is None else (raw_delta if direction == "higher" else -raw_delta)}
     if not current_digest:
         warnings.append("current contract has no digest; metric rankings are unavailable")
     return cards, warnings

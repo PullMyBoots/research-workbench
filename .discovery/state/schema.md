@@ -77,8 +77,9 @@ State transitions:
 - worker starts queued formal eval -> `work_loop` with `eval_status: running`;
 - worker formal eval success -> `reflection_loop` with `eval_status: succeeded`;
 - check failure -> `work_loop` with `eval_status: check_failed` and `last_error`;
-- formal eval failure or invalid report -> `work_loop` with `eval_status: failed`,
-  `active_eval`, and `last_error`;
+- formal eval failure or invalid report -> `work_loop` with
+  `eval_status: main_review`, `active_eval`, and `last_error`; no Route role is
+  launched until Human/Main resolves it;
 - reflection completed -> `work_loop`, previous `notebook.md` archived under
   `notebooks/`, and fresh `notebook.md` written from the next target brief.
 

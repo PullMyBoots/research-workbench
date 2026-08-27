@@ -23,7 +23,9 @@ justify setup and coordination costs.
 Do not invoke this Skill for a clear implementation, routine repair, standard
 reproduction, one-off diagnostic, or strongly sequential task that Main can
 handle directly in `subprojects-main/<id>/`. That directory has no required
-template or lifecycle.
+template or lifecycle. When one independent Agent needs a long-running local
+practice and memory loop but parallel Team search is not justified, use
+`create-single-agent-project` and `subprojects-single/<id>/` instead.
 
 Human/Main retain responsibility for:
 

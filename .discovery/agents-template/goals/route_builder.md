@@ -37,7 +37,8 @@ current Notebook chapter, then end the Turn without resubmitting the Job.
    ```
 
 2. Confirm `phase: work_loop`. Stop and report if phase differs, eval is
-   queued/running, or `failed/check_failed` requires Debug Eval.
+   queued/running, `check_failed` requires Debug Eval, or formal Evaluation
+   requires Human/Main review.
 3. Use only public resources. Recover the assigned route, Candidate contract,
    public Check, submission path, active Evaluation channels, metric directions
    and roles when present, AI-review dimensions and released feedback when
@@ -153,7 +154,7 @@ guessing:
 - commands, results, optional Baselines, slices, Guardrails, and parameter
   protocol/freeze point;
 - research story/review artifacts, risks, limitations, external source leads,
-  local `@item`/`@topic`/`@version` references, and readiness judgment.
+  local `@item`/`@topic`/`@baseline`/`@version` references, and readiness judgment.
 
 ## 完成定义与验收
 
@@ -187,9 +188,9 @@ Use the exact supplied command, normally:
   --candidate candidate/
 ```
 
-The command invokes the Problem-owned public Check first. Repair Candidate,
-dependency, packaging or interface failures locally; never bypass a failing
-Check. The Route does not create the formal report or choose the evaluator.
+The command invokes the Problem-owned public Check first. If it fails, record
+the public Check log and stop; Debug Eval owns repair. Never bypass the Check.
+The Route does not create the formal report or choose the evaluator.
 
 Before invoking it, compare the package with the latest own Version and verify
 that the exact manifest, entrypoint, arguments, invoked source/artifacts, and
@@ -202,7 +203,7 @@ effective incumbent or its effective behavior is unchanged, do not run
 
 After queueing, record/report job id and log, then stop. Worker success creates
 the practice version and `snapshot-<version-id>` and moves to
-`reflection_loop`; later failure is handled by Debug Eval.
+`reflection_loop`; evaluator failure returns to Human/Main review.
 
 ## 工作范围与约束注意事项
 

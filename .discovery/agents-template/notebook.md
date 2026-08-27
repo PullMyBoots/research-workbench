@@ -12,8 +12,8 @@ presentation, not less information. Record enough commands, configurations,
 code and result paths, observations, failed attempts, comparisons, decisions,
 uncertainty, and reasoning for the Auditor to reconstruct the iteration and
 write durable Version knowledge. Cite local knowledge as `@item:<id>`,
-`@topic:<id>` and `@version:<id>` whenever it materially informs a claim or
-decision.
+`@topic:<id>`, `@baseline:<id>` and `@version:<id>` whenever it materially
+informs a claim or decision.
 
 ## 1. Auditor Target Brief
 
@@ -71,10 +71,8 @@ materially changed direction earns promotion with meaningful public evidence,
 continue Chapter 2. Negative exploration is valuable evidence but does not
 justify repackaging or re-evaluating the incumbent.
 
-## 4. Evaluation Failure And Debug Log
+## 4. Check Failure And Debug Log
 
-Written only when Check or formal Evaluation fails. Record the job or Check,
-route-visible error and log locator, diagnosis, repair, verification, and every
-resubmission identity. Append repeated failures chronologically. Do not expose
-or infer private evaluator details. If Evaluation succeeds without recovery,
-state briefly that no Debug Eval was required.
+Written only when the public Check fails. Record the job, route-visible error
+and log locator, diagnosis, repair, verification, and every resubmission
+identity. Append repeated failures chronologically.

@@ -375,6 +375,8 @@ class RegisteredEvalProtocolTests(unittest.TestCase):
                 allocated_gpus=[],
             )
         self.assertEqual(result["status"], "failed")
+        state = DISCOVERY.read_json(self.agent / ".discovery" / "loop_state.json", {})
+        self.assertEqual(state["eval_status"], "main_review")
         reviewer_mock.assert_not_called()
 
     def test_reviewer_workspace_receives_only_sanitized_objective_evidence(self) -> None:
