@@ -189,7 +189,7 @@ class RouteRunLifecycleTests(unittest.TestCase):
             DISCOVERY.route_broker_endpoint_path(self.workspace),
             {"transport": "file", "pid": os.getpid(), "owner": "test"},
         )
-        client = runpy.run_path(str(MODULE_PATH.parents[1] / "agents-template" / "explore"))
+        client = runpy.run_path(str(MODULE_PATH.parents[2] / "subprojects-team" / ".team-template" / "route" / "explore"))
         try:
             with mock.patch.object(
                 DISCOVERY,
@@ -270,7 +270,7 @@ class RouteRunLifecycleTests(unittest.TestCase):
         self.assertIn(b"Epoch 2/3 ETA 1s\r", log_path.read_bytes())
 
     def test_route_client_coalesces_high_frequency_overwrite_progress(self) -> None:
-        client = runpy.run_path(str(Path(__file__).parents[1] / "agents-template" / "explore"))
+        client = runpy.run_path(str(Path(__file__).parents[2] / "subprojects-team" / ".team-template" / "route" / "explore"))
         path = Path(self.temp_dir.name) / "progress.log"
         raw = b"Epoch 1/3 ETA 2s\rEpoch 2/3 ETA 1s\rEpoch 3/3 ETA 0s\r"
         path.write_bytes(raw)

@@ -71,7 +71,7 @@ class NoticeCommandTests(unittest.TestCase):
 
 class GoalStartupContractTests(unittest.TestCase):
     def test_every_manual_and_headless_goal_reads_public_brief_and_loads_route_context(self) -> None:
-        template = Path(__file__).parents[1] / "agents-template"
+        template = Path(__file__).parents[2] / "subprojects-team" / ".team-template" / "route"
         for goal_name in ("route_builder.md", "route_auditor.md", "route_debug_eval.md"):
             with self.subTest(goal_dir="goals", goal_name=goal_name):
                 text = (template / "goals" / goal_name).read_text(encoding="utf-8")

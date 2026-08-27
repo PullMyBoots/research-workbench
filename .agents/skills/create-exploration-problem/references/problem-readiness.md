@@ -34,7 +34,8 @@ subprojects-team/<problem-id>/
       main_review/                   # Problem-private review material when needed
       evaluation_registry.json       # registered Problem-owned evaluator
       eval_submissions/              # immutable Candidate snapshots/reports
-  agent1/ ... agentN/                # independent Route workspaces
+  agent1/ agent2/ agent3/             # initially blank Route workspaces
+  agentN/                              # optional later Route when justified
 ```
 
 Keep shared CLI code and templates, Topic external knowledge, Topic Main Memory,
@@ -167,7 +168,7 @@ The brief must let a new Route answer, without private access:
 - What makes a candidate worth formal submission?
 - What constitutes success, freeze, or stop?
 
-Require human inspection before Route creation.
+Require human inspection before assigning or launching a Route.
 
 ## 8. Starter Portfolio Readiness
 
@@ -182,7 +183,10 @@ For every starter, record:
 - bootstrap Version and formal metrics;
 - demonstrated specialty, failure modes, and remaining frontier gap.
 
-Create `agent1` first for the central contradiction. Select every later Route from the baseline-plus-team frontier, not from a desire to fill a fixed roster. Require human inspection before full parallel launch.
+Develop only `agent1` first for the central contradiction. Leave the other
+precreated workspaces blank until the baseline-plus-team frontier justifies a
+materially different Starter; the three directories are capacity, not a fixed
+research roster. Require human inspection before full parallel launch.
 
 ## 9. Completion Gates
 

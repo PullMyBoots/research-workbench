@@ -38,7 +38,7 @@ CLAUDE.md                         独立第三方审查者的边界
 .discovery/                       运行时、Problem/Route 模板与测试
 subprojects-main/                 Main 直接工作的空白自由目录
 subprojects-single/               独立单 Agent 迭代项目及其极简模板
-subprojects-team/                 经设计和注册的 Team Problems
+subprojects-team/                 Team 模板及经设计、注册的 Problems
 discovery                         Human/Main 控制命令
 ```
 

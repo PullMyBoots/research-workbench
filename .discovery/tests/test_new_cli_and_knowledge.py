@@ -445,7 +445,7 @@ class MaintainCliTests(unittest.TestCase):
 class NewCliSurfaceTests(unittest.TestCase):
     def test_active_builder_prompts_require_new_signal_and_forbid_incumbent_resubmission(self) -> None:
         topic = MODULE_PATH.parents[2]
-        template = topic / ".discovery" / "agents-template"
+        template = topic / "subprojects-team" / ".team-template" / "route"
         builder_files = [
             template / "AGENTS.md",
             template / "goals" / "route_builder.md",
@@ -484,13 +484,13 @@ class NewCliSurfaceTests(unittest.TestCase):
             topic / "AGENTS.md",
             topic / ".agents" / "skills" / "maintain-discovery" / "SKILL.md",
             topic / ".agents" / "skills" / "create-exploration-problem" / "SKILL.md",
-            topic / ".discovery" / "agents-template" / "AGENTS.md",
-            topic / ".discovery" / "agents-template" / "notebook.md",
-            topic / ".discovery" / "agents-template" / "goals" / "route_builder.md",
-            topic / ".discovery" / "agents-template" / "goals" / "route_auditor.md",
-            topic / ".discovery" / "agents-template" / "headless_goals" / "route_builder.md",
-            topic / ".discovery" / "agents-template" / "headless_goals" / "route_auditor.md",
-            topic / ".discovery" / "agents-template" / ".agents" / "skills" / "explore-cli" / "SKILL.md",
+            topic / "subprojects-team" / ".team-template" / "route" / "AGENTS.md",
+            topic / "subprojects-team" / ".team-template" / "route" / "notebook.md",
+            topic / "subprojects-team" / ".team-template" / "route" / "goals" / "route_builder.md",
+            topic / "subprojects-team" / ".team-template" / "route" / "goals" / "route_auditor.md",
+            topic / "subprojects-team" / ".team-template" / "route" / "headless_goals" / "route_builder.md",
+            topic / "subprojects-team" / ".team-template" / "route" / "headless_goals" / "route_auditor.md",
+            topic / "subprojects-team" / ".team-template" / "route" / ".agents" / "skills" / "explore-cli" / "SKILL.md",
         ]
         forbidden = (
             "knowledge-request",
@@ -518,7 +518,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             self.assertIn(token, maintain_prompt)
         self.assertIn("@baseline:<problem-id>/<id>", maintain_prompt)
         self.assertIn("@version:<problem-id>/<id>", maintain_prompt)
-        route_prompt = (topic / ".discovery" / "agents-template" / "AGENTS.md").read_text(encoding="utf-8")
+        route_prompt = (topic / "subprojects-team" / ".team-template" / "route" / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("exactly four citeable entities", route_prompt)
         self.assertIn("@baseline:<id>", route_prompt)
         self.assertIn("does not enter Route Context", route_prompt)
@@ -535,7 +535,7 @@ class NewCliSurfaceTests(unittest.TestCase):
 
     def test_route_explore_client_has_a_separate_help_surface_in_a_clean_environment(self) -> None:
         topic = MODULE_PATH.parents[2]
-        route_client = topic / ".discovery" / "agents-template" / "explore"
+        route_client = topic / "subprojects-team" / ".team-template" / "route" / "explore"
         result = subprocess.run(
             [sys.executable, str(route_client), "--help"],
             cwd=topic,
@@ -559,7 +559,7 @@ class NewCliSurfaceTests(unittest.TestCase):
             synthetic_route.mkdir(parents=True)
             (synthetic_route / ".discovery").mkdir()
             (synthetic_route / ".discovery" / "broker_token").write_text("x" * 32, encoding="utf-8")
-            template = (MODULE_PATH.parents[2] / ".discovery" / "agents-template" / "explore").read_text(encoding="utf-8")
+            template = (MODULE_PATH.parents[2] / "subprojects-team" / ".team-template" / "route" / "explore").read_text(encoding="utf-8")
             client = synthetic_route / "explore"
             client.write_text(template.replace("{problem_root}", str(problem.resolve())), encoding="utf-8")
             probe = (
@@ -583,9 +583,9 @@ class NewCliSurfaceTests(unittest.TestCase):
             public = problem / ".DiscoveryConsole" / "pub"
             public.mkdir(parents=True)
             (topic / ".DiscoveryProgram").mkdir()
-            template = MODULE_PATH.parents[2] / ".discovery" / "agents-template"
-            shutil.copytree(template, topic / ".discovery" / "agents-template")
-            (topic / ".discovery" / "agents-template" / "explore").chmod(0o555)
+            template = MODULE_PATH.parents[2] / "subprojects-team" / ".team-template" / "route"
+            shutil.copytree(template, topic / "subprojects-team" / ".team-template" / "route")
+            (topic / "subprojects-team" / ".team-template" / "route" / "explore").chmod(0o555)
             args = argparse.Namespace(agent_cmd="create", name="agent1", force=False)
             with mock.patch.object(DISCOVERY, "load_evaluation_contract", return_value={"configured": True}), mock.patch.object(
                 DISCOVERY, "load_evaluation_registry", return_value={"configured": True}
@@ -611,7 +611,7 @@ class NewCliSurfaceTests(unittest.TestCase):
 
     def test_route_knowledge_filter_cannot_override_authenticated_identity(self) -> None:
         topic = MODULE_PATH.parents[2]
-        template = (topic / ".discovery" / "agents-template" / "explore").read_text(encoding="utf-8")
+        template = (topic / "subprojects-team" / ".team-template" / "route" / "explore").read_text(encoding="utf-8")
         self.assertIn('"route_filter": args.route', template)
         payload_index = template.index("**payload,")
         identity_index = template.index('"route": route_id', payload_index)
@@ -636,10 +636,10 @@ class NewCliSurfaceTests(unittest.TestCase):
             second = topic / "subprojects-team" / "b"
             first.mkdir(parents=True)
             second.mkdir(parents=True)
-            route_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
+            route_skill = topic / "subprojects-team" / ".team-template" / "route" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
             route_skill.parent.mkdir(parents=True)
             route_skill.write_text("<!-- explore-cli-protocol: 9 -->", encoding="utf-8")
-            template_query_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
+            template_query_skill = topic / "subprojects-team" / ".team-template" / "route" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
             template_query_skill.parent.mkdir(parents=True)
             template_query_skill.write_text("<!-- knowledge-query-protocol: 1 -->", encoding="utf-8")
             DISCOVERY.write_json(
@@ -728,7 +728,7 @@ class NewCliSurfaceTests(unittest.TestCase):
     def test_stale_route_prompt_bundle_blocks_new_headless_start(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "problem"
-            template = workspace / ".discovery" / "agents-template"
+            template = workspace / ".team-template" / "route"
             agent = workspace / "agent1"
             for relative in DISCOVERY.ROUTE_PROMPT_BUNDLE:
                 (template / relative).parent.mkdir(parents=True, exist_ok=True)

@@ -46,6 +46,8 @@ import knowledge_query
 ROOT_MARKER = ".DiscoveryConsole"
 TOPIC_MARKER = ".DiscoveryProgram"
 TEAM_SUBPROJECTS_DIR = "subprojects-team"
+TEAM_TEMPLATE_DIR = Path(TEAM_SUBPROJECTS_DIR) / ".team-template"
+INITIAL_ROUTE_NAMES = ("agent1", "agent2", "agent3")
 AGENT_NAME_RE = re.compile(r"agent[A-Za-z0-9_-]*\Z")
 SAFE_ID_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 VERSION_RE = re.compile(r"version-[A-Za-z0-9_.-]+\Z")
@@ -564,8 +566,8 @@ def cmd_start(topic: Path, current_workspace: Path | None, cwd: Path, args: argp
     topic_knowledge = unified_knowledge_integrity_report(topic, root=program_root(topic) / "knowledge", versions_workspace=None)
     if not topic_knowledge.get("ok"):
         structural_errors.append(f"topic: knowledge integrity issues {json.dumps(topic_knowledge.get('issues', []), ensure_ascii=False)}")
-    route_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
-    query_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
+    route_skill = topic / TEAM_TEMPLATE_DIR / "route" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
+    query_skill = topic / TEAM_TEMPLATE_DIR / "route" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
     try:
         route_skill_ready = ROUTE_CLI_PROTOCOL_MARKER in route_skill.read_text(encoding="utf-8") and "knowledge-query-protocol: 1" in query_skill.read_text(encoding="utf-8")
     except OSError:
@@ -871,26 +873,26 @@ def required_paths(workspace: Path) -> list[Path]:
         topic / ".agents" / "skills" / "maintain-discovery" / "SKILL.md",
         topic / "discovery",
         topic / ".discovery" / "cli" / "discovery.py",
-        topic / ".discovery" / "problem-template" / "problem.json",
-        topic / ".discovery" / "problem-template" / ".DiscoveryConsole" / "resources.json",
-        topic / ".discovery" / "agents-template" / "AGENTS.md",
-        topic / ".discovery" / "reviewer-template" / "AGENTS.md",
-        topic / ".discovery" / "reviewer-template" / "review",
-        topic / ".discovery" / "agents-template" / "explore",
-        topic / ".discovery" / "agents-template" / "notebook.md",
-        topic / ".discovery" / "agents-template" / ".codex" / "config.toml",
-        topic / ".discovery" / "agents-template" / ".discovery" / "loop_state.json",
-        topic / ".discovery" / "agents-template" / ".discovery" / "loopctl.py",
-        topic / ".discovery" / "agents-template" / "goals" / "README.md",
-        topic / ".discovery" / "agents-template" / "goals" / "route_builder.md",
-        topic / ".discovery" / "agents-template" / "goals" / "route_auditor.md",
-        topic / ".discovery" / "agents-template" / "goals" / "route_debug_eval.md",
-        topic / ".discovery" / "agents-template" / "notebooks" / "README.md",
-        topic / ".discovery" / "agents-template" / ".agents" / "skills" / "explore-cli" / "SKILL.md",
-        topic / ".discovery" / "agents-template" / "experiments",
-        topic / ".discovery" / "agents-template" / "inspect",
-        topic / ".discovery" / "agents-template" / "results",
-        topic / ".discovery" / "agents-template" / "src",
+        topic / TEAM_TEMPLATE_DIR / "problem" / "problem.json",
+        topic / TEAM_TEMPLATE_DIR / "problem" / ".DiscoveryConsole" / "resources.json",
+        topic / TEAM_TEMPLATE_DIR / "route" / "AGENTS.md",
+        topic / TEAM_TEMPLATE_DIR / "reviewer" / "AGENTS.md",
+        topic / TEAM_TEMPLATE_DIR / "reviewer" / "review",
+        topic / TEAM_TEMPLATE_DIR / "route" / "explore",
+        topic / TEAM_TEMPLATE_DIR / "route" / "notebook.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / ".codex" / "config.toml",
+        topic / TEAM_TEMPLATE_DIR / "route" / ".discovery" / "loop_state.json",
+        topic / TEAM_TEMPLATE_DIR / "route" / ".discovery" / "loopctl.py",
+        topic / TEAM_TEMPLATE_DIR / "route" / "goals" / "README.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / "goals" / "route_builder.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / "goals" / "route_auditor.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / "goals" / "route_debug_eval.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / "notebooks" / "README.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / ".agents" / "skills" / "explore-cli" / "SKILL.md",
+        topic / TEAM_TEMPLATE_DIR / "route" / "experiments",
+        topic / TEAM_TEMPLATE_DIR / "route" / "inspect",
+        topic / TEAM_TEMPLATE_DIR / "route" / "results",
+        topic / TEAM_TEMPLATE_DIR / "route" / "src",
         pub(workspace) / "README.md",
         pub(workspace) / "evaluation" / "API.md",
         pub(workspace) / "evaluation" / "contract.json",
@@ -937,7 +939,9 @@ def topic_required_paths(topic: Path) -> list[Path]:
         topic / ".agents" / "skills" / "create-single-agent-project" / "SKILL.md",
         topic / ".agents" / "skills" / "create-single-agent-project" / "scripts" / "create_single_agent_project.py",
         topic / TEAM_SUBPROJECTS_DIR,
-        topic / ".discovery" / "problem-template" / "problem.json",
+        topic / TEAM_TEMPLATE_DIR / "problem" / "problem.json",
+        topic / TEAM_TEMPLATE_DIR / "route" / "AGENTS.md",
+        topic / TEAM_TEMPLATE_DIR / "reviewer" / "AGENTS.md",
     ]
 
 
@@ -959,8 +963,8 @@ def cmd_validate(workspace: Path) -> None:
 def cmd_validate_topic(topic: Path) -> None:
     missing = [rel(topic, path) for path in topic_required_paths(topic) if not path.exists()]
     topic_knowledge = unified_knowledge_integrity_report(topic, root=program_root(topic) / "knowledge", versions_workspace=None)
-    route_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
-    query_skill = topic / ".discovery" / "agents-template" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
+    route_skill = topic / TEAM_TEMPLATE_DIR / "route" / ".agents" / "skills" / "explore-cli" / "SKILL.md"
+    query_skill = topic / TEAM_TEMPLATE_DIR / "route" / ".agents" / "skills" / "browse-problem-knowledge" / "SKILL.md"
     try:
         route_cli_protocol = ROUTE_CLI_PROTOCOL_MARKER in route_skill.read_text(encoding="utf-8") and "knowledge-query-protocol: 1" in query_skill.read_text(encoding="utf-8")
     except OSError:
@@ -1090,26 +1094,33 @@ def cmd_problem(topic: Path, args: argparse.Namespace) -> None:
         return
     if any(str(row.get("id")) == problem_id for row in registered_problems(topic)):
         raise SystemExit(f"Problem already exists: {problem_id}")
-    template = topic / ".discovery" / "problem-template"
+    template = topic / TEAM_TEMPLATE_DIR / "problem"
     target = topic / TEAM_SUBPROJECTS_DIR / problem_id
     if target.exists():
         raise SystemExit(f"Problem path already exists: {target}")
     if not template.is_dir():
         raise SystemExit(f"Problem template not found: {template}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(template, target, symlinks=True)
-    replace_token(target, "{problem_id}", problem_id)
-    replace_token(target, "{problem_title}", str(args.title or problem_id))
-    replace_token(target, "{problem_status}", str(args.status or "scoping"))
-    for link, destination in ((target / ".discovery", Path("..") / ".." / ".discovery"), (target / ".agents", Path("..") / ".." / ".agents"), (target / "AGENTS.md", Path("..") / ".." / "AGENTS.md")):
-        if link.exists() or link.is_symlink():
-            if link.is_dir() and not link.is_symlink():
-                shutil.rmtree(link)
-            else:
-                link.unlink()
-        link.symlink_to(destination)
-    if (topic / "data").exists() and not (target / "data").exists():
-        (target / "data").symlink_to(Path("..") / ".." / "data")
+    try:
+        shutil.copytree(template, target, symlinks=True)
+        replace_token(target, "{problem_id}", problem_id)
+        replace_token(target, "{problem_title}", str(args.title or problem_id))
+        replace_token(target, "{problem_status}", str(args.status or "scoping"))
+        for link, destination in ((target / ".discovery", Path("..") / ".." / ".discovery"), (target / ".agents", Path("..") / ".." / ".agents"), (target / "AGENTS.md", Path("..") / ".." / "AGENTS.md")):
+            if link.exists() or link.is_symlink():
+                if link.is_dir() and not link.is_symlink():
+                    shutil.rmtree(link)
+                else:
+                    link.unlink()
+            link.symlink_to(destination)
+        if (topic / "data").exists() and not (target / "data").exists():
+            (target / "data").symlink_to(Path("..") / ".." / "data")
+        for route_name in INITIAL_ROUTE_NAMES:
+            materialize_route_workspace(target, route_name)
+    except BaseException:
+        if target.exists():
+            shutil.rmtree(target)
+        raise
     row = {
         "id": problem_id,
         "title": str(args.title or problem_id),
@@ -1120,7 +1131,7 @@ def cmd_problem(topic: Path, args: argparse.Namespace) -> None:
     registry.setdefault("problems", []).append(row)
     registry["default_problem"] = registry.get("default_problem") or problem_id
     write_problem_registry(topic, registry)
-    print(json.dumps({"created": problem_id, "path": str(target), "status": row["status"]}, ensure_ascii=False, indent=2, sort_keys=True))
+    print(json.dumps({"created": problem_id, "path": str(target), "routes": list(INITIAL_ROUTE_NAMES), "status": row["status"]}, ensure_ascii=False, indent=2, sort_keys=True))
 
 
 # Metrics are Problem-specific. The dashboard preserves contract order when a
@@ -1695,11 +1706,11 @@ ROUTE_PROMPT_BUNDLE = (
 def route_prompt_bundle_issues(workspace: Path, route: Path) -> list[dict[str, str]]:
     """Detect operational Route prompts that have drifted from the template."""
     try:
-        template = topic_root(workspace) / ".discovery" / "agents-template"
+        template = topic_root(workspace) / TEAM_TEMPLATE_DIR / "route"
     except SystemExit:
         # Lightweight tests and standalone fixtures may place the template next
         # to the Problem without a registered Topic root.
-        template = workspace / ".discovery" / "agents-template"
+        template = workspace / ".team-template" / "route"
     issues: list[dict[str, str]] = []
     for relative in ROUTE_PROMPT_BUNDLE:
         source = template / relative
@@ -1951,7 +1962,7 @@ def build_dashboard_agent_statuses(workspace: Path, agents: list[str], *, includ
         elif not prompt_bundle_ready and active_headless is None and should_start_codex:
             waiting_for = "Main/Human"
             status_label = "Needs attention"
-            status_detail = "Sync this Route instruction bundle from .discovery/agents-template"
+            status_detail = "Sync this Route instruction bundle from subprojects-team/.team-template/route"
             runner_action = "blocked_prompt_bundle"
             goal_file = None
             should_start_codex = False
@@ -6427,16 +6438,21 @@ def cmd_agent(workspace: Path, args: argparse.Namespace) -> None:
         print(json.dumps(agents, indent=2))
         return
 
-    name = args.name
     contract = load_evaluation_contract(workspace, require_configured=True)
     registry = load_evaluation_registry(workspace, require_configured=True)
     validate_evaluation_pair(workspace, contract, registry)
+    name = args.name
+    target = materialize_route_workspace(workspace, name, force=args.force)
+    print(json.dumps({"created": name, "problem_id": current_problem_id(workspace), "path": str(target), "pub": f"pub -> {pub(workspace).resolve()}"}, indent=2))
+
+
+def materialize_route_workspace(workspace: Path, name: str, *, force: bool = False) -> Path:
     if not AGENT_NAME_RE.fullmatch(name):
         raise SystemExit("agent name must match agent[A-Za-z0-9_-]*")
-    template = topic_root(workspace) / ".discovery" / "agents-template"
+    template = topic_root(workspace) / TEAM_TEMPLATE_DIR / "route"
     target = workspace / name
     if target.exists():
-        if not args.force:
+        if not force:
             raise SystemExit(f"{name} already exists")
         if target.is_symlink() or not target.is_dir():
             raise SystemExit(f"refusing to replace non-directory agent path: {name}")
@@ -6468,7 +6484,7 @@ def cmd_agent(workspace: Path, args: argparse.Namespace) -> None:
     explore_client.chmod(0o555)
     ensure_agent_git(target)
     ensure_route_broker_token(target)
-    print(json.dumps({"created": name, "problem_id": current_problem_id(workspace), "path": str(target), "pub": f"pub -> {pub(workspace).resolve()}"}, indent=2))
+    return target
 
 
 def replace_token(root: Path, token: str, value: str) -> None:
@@ -9739,7 +9755,7 @@ def prepare_reviewer_workspace(
     metadata: dict[str, Any],
     objective_metrics: dict[str, float] | None,
 ) -> Path:
-    template = topic_root(workspace) / ".discovery" / "reviewer-template"
+    template = topic_root(workspace) / TEAM_TEMPLATE_DIR / "reviewer"
     if not template.is_dir():
         raise SystemExit("reviewer template is missing")
     review_dir = submission_root / "review"

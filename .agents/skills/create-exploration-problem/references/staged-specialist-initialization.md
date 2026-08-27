@@ -28,7 +28,7 @@ the subproblem. Keep it concise and link to machine contracts. Include:
   machine-readable eval contracts;
 - the staged specialist initialization policy and route startup expectations.
 
-Require human inspection before route creation. Require every Route to read the
+Require human inspection before Route assignment or launch. Require every Route to read the
 current brief and all current Notices before starting each task. Human/Main edit
 README directly when the complete subproblem description changes. When later
 review produces a problem finding or adjustment, publish a Notice describing
@@ -45,7 +45,7 @@ Build the initial portfolio sequentially:
    uncertainty, Provenance and the README's natural-language explanation as the
    initial evidence surface. When a Baseline Group is used, include its valid
    metric matrix and Frontier.
-2. Create `agent1` as the central-contradiction specialist. Choose a credible
+2. Assign the precreated `agent1` workspace as the central-contradiction specialist. Choose a credible
    mechanism aimed at a clear lead on the most important uncovered
    Breakthrough capability or a coherent primary attack set. Monitor and report
    the README's Guardrail concerns without turning them into automatic gates.
@@ -56,9 +56,11 @@ Build the initial portfolio sequentially:
    strong Baseline when present. Diagnose meaningful gaps using the objective
    roles, AI-review dimensions, priorities and reasons described in README;
    ignore tiny noisy movements and interpret Guardrail costs in context.
-5. Select the largest important gap not covered by any current route. Create
-   `agentN` around a materially different solution system specialized for that
-   gap, then repeat the check/eval/comparison loop.
+5. Select the largest important gap not covered by any current route. Assign
+   the next blank workspace around a materially different solution system
+   specialized for that gap, then repeat the check/eval/comparison loop. Add
+   another workspace only after the initial three are assigned and the same
+   evidence justifies expansion.
 6. Stop adding starters when the portfolio covers the central claim and its
    major uncovered gaps with credible specialists, important Guardrail
    tradeoffs have been reviewed, and the routes contain genuinely different

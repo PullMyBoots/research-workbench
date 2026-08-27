@@ -1,17 +1,16 @@
 # Discovery Runtime
 
-`.discovery/` is the reusable Topic-level implementation. It contains the
-public launcher, private mechanical control API, Problem and Route templates,
-resource policy, tests and runtime code. A newly cloned workbench has zero
-registered Problems; it becomes a Team runtime only after Human/Main create and
-configure one.
+`.discovery/` is the reusable Topic-level runtime. Team construction templates
+live beside their instances in `subprojects-team/.team-template/`. A newly
+cloned workbench has zero registered Problems; it becomes a Team runtime only
+after Human/Main create and configure one.
 
 ```text
 ../discovery
 cli/discovery.py
-problem-template/
-agents-template/
+state/
 tests/
+../subprojects-team/.team-template/{problem,route,reviewer}/
 ```
 
 ## Public command surfaces

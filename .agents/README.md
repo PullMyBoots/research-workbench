@@ -26,8 +26,8 @@ Wiki uses exactly `@item`, `@topic`, `@memory`, and `@version` references: Route
 contexts resolve only their local Problem entities, while Main cites Problem
 entities from Topic knowledge with `<problem-id>/<id>` qualification.
 
-Search-route shared rules live in `.discovery/agents-template/AGENTS.md`.
-Builder and Auditor role contracts live in `.discovery/agents-template/goals/`.
+Search-route shared rules live in `subprojects-team/.team-template/route/AGENTS.md`.
+Builder and Auditor role contracts live in `subprojects-team/.team-template/route/goals/`.
 The Route-only CLI Skill remains at
-`.discovery/agents-template/.agents/skills/explore-cli`; it is distinct from
+`subprojects-team/.team-template/route/.agents/skills/explore-cli`; it is distinct from
 Main Agent maintenance and exposes only `context`, `run`, `eval`, and `reflect`.

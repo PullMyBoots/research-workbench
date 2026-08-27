@@ -380,8 +380,8 @@ class RegisteredEvalProtocolTests(unittest.TestCase):
         reviewer_mock.assert_not_called()
 
     def test_reviewer_workspace_receives_only_sanitized_objective_evidence(self) -> None:
-        template = self.topic / ".discovery" / "reviewer-template"
-        shutil.copytree(MODULE_PATH.parents[1] / "reviewer-template", template)
+        template = self.topic / "subprojects-team" / ".team-template" / "reviewer"
+        shutil.copytree(MODULE_PATH.parents[2] / "subprojects-team" / ".team-template" / "reviewer", template)
         evaluation = self.workspace / ".DiscoveryConsole" / "pub" / "evaluation"
         prompt = evaluation / "reviewer_prompt.md"
         prompt.write_text("Score clarity from the declared evidence. 1 is unsupported; 10 is decisive.", encoding="utf-8")
@@ -497,7 +497,7 @@ class RegisteredEvalProtocolTests(unittest.TestCase):
     def test_reviewer_knowledge_browse_uses_singular_refs(self) -> None:
         review_dir = self.workspace / ".DiscoveryConsole" / "private" / "review-cli-test"
         review_dir.mkdir(parents=True)
-        shutil.copy(Path(__file__).parents[1] / "reviewer-template" / "review", review_dir / "review")
+        shutil.copy(Path(__file__).parents[2] / "subprojects-team" / ".team-template" / "reviewer" / "review", review_dir / "review")
         knowledge = self.workspace / ".DiscoveryConsole" / "pub" / "knowledge"
         DISCOVERY.write_json(knowledge / "items.json", {"paper": {"summary": "Paper"}})
         DISCOVERY.write_json(knowledge / "topics.json", {"methods": {"summary": "Methods"}})
@@ -518,11 +518,11 @@ class RegisteredEvalProtocolTests(unittest.TestCase):
         protocol = (skill_root / "references" / "evaluation-system-protocol.md").read_text(encoding="utf-8")
         readiness = (skill_root / "references" / "problem-readiness.md").read_text(encoding="utf-8")
         staged = (skill_root / "references" / "staged-specialist-initialization.md").read_text(encoding="utf-8")
-        template_root = MODULE_PATH.parents[2] / ".discovery" / "problem-template" / ".DiscoveryConsole" / "pub"
+        template_root = MODULE_PATH.parents[2] / "subprojects-team" / ".team-template" / "problem" / ".DiscoveryConsole" / "pub"
         template_readme = (template_root / "README.md").read_text(encoding="utf-8")
         template_api = (template_root / "evaluation" / "API.md").read_text(encoding="utf-8")
         template_rubric = (template_root / "evaluation" / "reviewer_prompt.md").read_text(encoding="utf-8")
-        reviewer_rules = (MODULE_PATH.parents[1] / "reviewer-template" / "AGENTS.md").read_text(encoding="utf-8")
+        reviewer_rules = (MODULE_PATH.parents[2] / "subprojects-team" / ".team-template" / "reviewer" / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("what every objective metric and AI-review dimension means", skill)
         self.assertIn("how it bears on the central claim", protocol)
         self.assertIn("For Hybrid Evaluation", protocol)

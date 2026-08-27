@@ -115,7 +115,9 @@ Provenance. Then use the installed CLI:
 Confirm the new Problem owns its `problem.json`,
 `.DiscoveryConsole/resources.json`, `.DiscoveryConsole/pub`,
 `.DiscoveryConsole/private`, unified Knowledge, logs, Baselines, evaluation
-contract and submission storage. Replace the template's safe resource values
+contract and submission storage. The command also renders three blank,
+unassigned Route workspaces (`agent1`–`agent3`) from the single shared Route
+template. Replace the template's safe resource values
 with the already-agreed Problem policy, then require `discovery doctor
 --problem <problem-id>` to validate the host, GPU ids, Eval-within-queue rule,
 free/queue GPU separation, and cgroup enforcement. Confirm each Route will
@@ -124,8 +126,8 @@ verify actual sandbox, mount or permission isolation before storing hidden
 resources. Route creation installs its broker credential mechanically; do not
 hand-create or publish credentials.
 
-Do not set `configured: true`, mark Problem Ready, or create a Route merely
-because the directories exist.
+Do not set `configured: true`, mark Problem Ready, assign a Starter, or launch a
+Route merely because the blank workspaces exist.
 
 The following modules are the Team-space construction process. They describe
 initialization dependencies, not a mandatory lifecycle for the surrounding
@@ -272,9 +274,8 @@ readiness evidence.
 
 Follow [staged-specialist-initialization.md](references/staged-specialist-initialization.md).
 
-1. Create only `agent1` first.
-   Use `./discovery _control --problem <problem-id> route create agent1` after
-   evaluator activation.
+1. After evaluator activation, assign and develop only the precreated `agent1`
+   workspace first; leave `agent2` and `agent3` blank.
 2. Develop its Starter entirely inside ordinary Route-visible boundaries.
 3. Package a minimal valid Candidate and submit it with:
 
@@ -284,8 +285,10 @@ Follow [staged-specialist-initialization.md](references/staged-specialist-initia
 
 4. Let the registered evaluator create the Bootstrap Version; compare it with
    the current Team evidence and, when present, all valid strong Baselines.
-5. Create `agentN` only for an important uncovered Frontier gap, using a
-   materially different mechanism and expected specialty.
+5. Assign the next blank workspace only for an important uncovered Frontier
+   gap, using a materially different mechanism and expected specialty. Create
+   `agentN` only when all three initial workspaces are assigned and another
+   Route is justified.
 6. Repeat Candidate Check and Bootstrap Eval for every Starter.
 7. Stop adding Routes when the portfolio has useful Breakthrough coverage,
    reviewed Guardrail tradeoffs, mechanism diversity and proven submission

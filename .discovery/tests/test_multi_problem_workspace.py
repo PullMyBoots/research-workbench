@@ -3,6 +3,8 @@ import contextlib
 import importlib.util
 import io
 import json
+import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,29 +23,10 @@ class MultiProblemWorkspaceTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.topic = Path(self.temp_dir.name) / "topic"
         (self.topic / ".DiscoveryProgram" / "log").mkdir(parents=True)
-        (self.topic / ".discovery" / "problem-template" / ".DiscoveryConsole" / "pub" / "log").mkdir(parents=True)
         (self.topic / ".agents").mkdir()
-        (self.topic / "subprojects-team").mkdir()
-        (self.topic / ".discovery" / "problem-template" / "problem.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "problem_id": "{problem_id}",
-                    "title": "{problem_title}",
-                    "status": "{problem_status}",
-                }
-            ),
-            encoding="utf-8",
-        )
-        DISCOVERY.write_json(
-            self.topic / ".discovery" / "problem-template" / ".DiscoveryConsole" / "resources.json",
-            {
-                "schema_version": 1,
-                "free_run": {"default": {"cpus": 1, "memory_gb": 1, "gpus": []}, "agents": {}},
-                "queue": {"capacity": {"cpus": 2, "memory_gb": 2, "gpus": []}},
-                "evaluation": {"resources": {"cpus": 1, "memory_gb": 1, "gpus": []}, "timeout_seconds": None},
-                "scheduler": {"memory_reserve_gb": 0, "respect_system_load": False, "respect_external_gpu_processes": True},
-            },
+        shutil.copytree(
+            MODULE_PATH.parents[2] / "subprojects-team" / ".team-template",
+            self.topic / "subprojects-team" / ".team-template",
         )
         DISCOVERY.write_json(
             self.topic / ".DiscoveryProgram" / "problem_registry.json",
@@ -55,7 +38,7 @@ class MultiProblemWorkspaceTests(unittest.TestCase):
 
     def create_problem(self, problem_id: str, title: str = "Test Problem") -> Path:
         args = argparse.Namespace(problem_cmd="create", problem_id=problem_id, title=title, status="scoping")
-        with contextlib.redirect_stdout(io.StringIO()):
+        with mock.patch.object(DISCOVERY, "codex_install_root", return_value=Path(sys.prefix)), contextlib.redirect_stdout(io.StringIO()):
             DISCOVERY.cmd_problem(self.topic, args)
         return self.topic / "subprojects-team" / problem_id
 
@@ -79,6 +62,23 @@ class MultiProblemWorkspaceTests(unittest.TestCase):
         self.assertNotIn("human_approved", registry["problems"][0])
         self.assertEqual((workspace / ".discovery").resolve(), (self.topic / ".discovery").resolve())
         self.assertEqual((workspace / ".agents").resolve(), (self.topic / ".agents").resolve())
+        self.assertEqual([path.name for path in sorted(workspace.glob("agent*"))], ["agent1", "agent2", "agent3"])
+        for route_name in DISCOVERY.INITIAL_ROUTE_NAMES:
+            route = workspace / route_name
+            self.assertTrue((route / ".git").is_dir())
+            self.assertEqual((route / "pub").resolve(), (workspace / ".DiscoveryConsole" / "pub").resolve())
+
+    def test_topic_validation_uses_team_template_outside_discovery_runtime(self) -> None:
+        required = {path.relative_to(self.topic).as_posix() for path in DISCOVERY.topic_required_paths(self.topic)}
+        self.assertIn("subprojects-team/.team-template/problem/problem.json", required)
+        self.assertIn("subprojects-team/.team-template/route/AGENTS.md", required)
+        self.assertIn("subprojects-team/.team-template/reviewer/AGENTS.md", required)
+        self.assertFalse(
+            any(
+                path.startswith((".discovery/problem-template", ".discovery/agents-template", ".discovery/reviewer-template"))
+                for path in required
+            )
+        )
 
     def test_registry_rejects_noncanonical_problem_path(self) -> None:
         self.create_problem("problem-a")
@@ -103,7 +103,7 @@ class MultiProblemWorkspaceTests(unittest.TestCase):
 
     def test_agent_creation_is_blocked_before_evaluator_is_configured(self) -> None:
         workspace = self.create_problem("problem-a")
-        args = argparse.Namespace(agent_cmd="create", name="agent1", force=False)
+        args = argparse.Namespace(agent_cmd="create", name="agent4", force=False)
         with self.assertRaisesRegex(SystemExit, "evaluation contract"):
             DISCOVERY.cmd_agent(workspace, args)
 
